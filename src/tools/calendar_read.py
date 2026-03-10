@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 from typing import Any
 
 import structlog
@@ -32,8 +33,10 @@ class CalendarReadTool:
 
     async def execute(self, **kwargs: Any) -> str:
         days = min(int(kwargs.get("days", 7)), 30)
+        start = date.today().strftime("%Y-%m-%d")
+        end = (date.today() + timedelta(days=days)).strftime("%Y-%m-%d")
         proc = await asyncio.create_subprocess_exec(
-            _GCALCLI, "agenda", "--nocolor", f"--days={days}",
+            _GCALCLI, "agenda", "--nocolor", start, end,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
