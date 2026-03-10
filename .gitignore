@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+*.pyc
+*.pyo
+__pycache__/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Tools
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data (never commit user data)
+data/*.db
+data/projects/
+memory/logs/
+memory/facts.md
+
+# macOS
+.DS_Store
+
+# Credentials / secrets
+*.pem
+*.key
+credentials.json
+token.json

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personalassistant</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Replace /path/to/enki with your actual clone directory -->
+        <string>/path/to/enki/.venv/bin/python3</string>
+        <string>/path/to/enki/main.py</string>
+        <string>telegram</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/path/to/enki</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- .env is loaded by pydantic-settings; add overrides here if needed -->
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/enki/stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/enki/stderr.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

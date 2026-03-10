@@ -1,0 +1,46 @@
+services:
+  enki:
+    build: .
+    env_file: .env
+    volumes:
+      # Read-write: data the agent produces / evolves
+      - ./data:/app/data
+      - ./memory:/app/memory
+      - ./workspaces:/app/workspaces  # workspace code dirs persist across restarts
+      - ./tools_pending:/app/tools_pending
+      - ./src/tools:/app/src/tools          # agent can propose new tools here
+      # Read-only: immutable core — container process cannot modify these
+      - ./src/guardrails:/app/src/guardrails:ro
+      - ./src/audit:/app/src/audit:ro
+      - ./src/agent.py:/app/src/agent.py:ro
+      - ./main.py:/app/main.py:ro
+      - ./soul.md:/app/soul.md:ro
+      - whisper_cache:/home/enki/.cache/whisper  # persists downloaded models across restarts
+      - ~/.config/gcalcli:/home/enki/.config/gcalcli:ro  # Google Calendar OAuth token
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    mem_limit: 1g
+    restart: unless-stopped
+    networks:
+      - restricted
+
+  # Test runner — same image, runs pytest instead of the bot
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    env_file: .env.test
+    volumes:
+      - .:/app
+    networks:
+      - restricted
+    profiles:
+      - test
+
+networks:
+  restricted:
+    driver: bridge
+
+volumes:
+  whisper_cache:

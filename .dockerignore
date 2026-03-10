@@ -1,0 +1,17 @@
+.git/
+.venv/
+data/
+memory/
+workspaces/
+tools_pending/
+tools_disabled/
+tests/
+__pycache__/
+*.pyc
+*.pid
+.env
+.env.*
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
