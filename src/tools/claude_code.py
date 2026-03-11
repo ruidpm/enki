@@ -380,7 +380,7 @@ class RunClaudeCodeTool:
             f"for a Telegram message. Be concise and focus on what changed.\n\n{full_output[:4000]}"
         )
         try:
-            summary, _ = await self._agent.run_turn(summary_prompt)
+            summary = await self._agent.run_turn(summary_prompt)
         except Exception as exc:
             log.warning("gist_summary_failed", error=str(exc))
             summary = full_output[:400]

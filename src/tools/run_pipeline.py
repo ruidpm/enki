@@ -342,7 +342,7 @@ class RunPipelineTool:
             f"for a Telegram message. Stage: {stage.upper()}. Be concise.\n\n{result[:4000]}"
         )
         try:
-            summary, _ = await self._agent.run_turn(summary_prompt)
+            summary = await self._agent.run_turn(summary_prompt)
         except Exception as exc:
             log.warning("pipeline_summary_failed", stage=stage, error=str(exc))
             summary = result[:400]

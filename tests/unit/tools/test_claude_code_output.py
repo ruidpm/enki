@@ -24,7 +24,7 @@ def tool(notifier: MagicMock, tmp_path: Path) -> RunClaudeCodeTool:
 
 def _mock_agent(summary: str = "• Change A\n• Change B") -> MagicMock:
     agent = MagicMock()
-    agent.run_turn = AsyncMock(return_value=(summary, 100))
+    agent.run_turn = AsyncMock(return_value=summary)
     return agent
 
 
