@@ -354,8 +354,61 @@ def telegram() -> None:
     assert isinstance(manage_schedule_tool, _MST)
     manage_schedule_tool.set_scheduler(scheduler)
 
+    _LAST_SEEN_FILE = Path("data/last_seen")
+
+    async def _heartbeat_writer() -> None:
+        """Write current timestamp to data/last_seen every 60 s."""
+        import asyncio
+        while True:
+            try:
+                _LAST_SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+                _LAST_SEEN_FILE.write_text(str(int(__import__("time").time())))
+            except Exception as exc:
+                log.warning("heartbeat_write_failed", error=str(exc))
+            await asyncio.sleep(60)
+
+    async def _connectivity_monitor() -> None:
+        """Ping 8.8.8.8:53 every 60 s; notify when internet is restored after an outage."""
+        import asyncio
+        import socket
+        import time
+
+        offline_since: float | None = None
+        while True:
+            online = False
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.connect(("8.8.8.8", 53))
+                sock.close()
+                online = True
+            except OSError:
+                pass
+
+            now = time.time()
+            if online:
+                if offline_since is not None:
+                    duration_min = int((now - offline_since) / 60)
+                    from datetime import datetime, timezone
+                    lost_at = datetime.fromtimestamp(offline_since, tz=timezone.utc).strftime("%H:%M UTC")
+                    try:
+                        await bot.send(
+                            f"Internet restored. Was offline from {lost_at} "
+                            f"({duration_min} min ago)."
+                        )
+                    except Exception:
+                        pass
+                    offline_since = None
+            else:
+                if offline_since is None:
+                    offline_since = now
+                    log.warning("connectivity_lost")
+
+            await asyncio.sleep(60)
+
     async def _on_startup(_app: object) -> None:
         import asyncio
+        import time
         from telegram import BotCommand, MenuButtonCommands
         from telegram.ext import Application as _App
         assert isinstance(_app, _App)
@@ -367,6 +420,28 @@ def telegram() -> None:
         ])
         await _app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
         scheduler.start()
+
+        # Startup catch-up: notify if last_seen gap > 2 min (i.e. we were down)
+        try:
+            if _LAST_SEEN_FILE.exists():
+                last_ts = int(_LAST_SEEN_FILE.read_text().strip())
+                gap = int(time.time()) - last_ts
+                if gap > 120:
+                    from datetime import datetime, timezone
+                    last_str = datetime.fromtimestamp(last_ts, tz=timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M UTC"
+                    )
+                    await bot.send(
+                        f"Enki restarted. Last seen: {last_str} "
+                        f"({gap // 60} min ago). Catching up."
+                    )
+        except Exception as exc:
+            log.warning("startup_catchup_failed", error=str(exc))
+
+        # Background tasks
+        asyncio.create_task(_heartbeat_writer())
+        asyncio.create_task(_connectivity_monitor())
+
         # Weekly facts cleanup — runs only if due and facts.md is large enough
         try:
             await asyncio.wait_for(compactor.clean_facts(), timeout=30.0)  # type: ignore[attr-defined]

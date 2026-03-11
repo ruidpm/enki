@@ -106,6 +106,12 @@ class Scheduler:
                 self._store.record_run(job.job_id)
         except Exception as exc:
             log.error("job_error", job_id=job.job_id, error=str(exc))
+            try:
+                await self._notifier.send(
+                    f"Job `{job.job_id}` failed: {exc}"
+                )
+            except Exception:
+                pass
 
     def start(self) -> None:
         self._scheduler.start()

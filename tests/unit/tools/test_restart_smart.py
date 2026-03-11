@@ -1,18 +1,13 @@
 """Tests for smart restart — Docker vs local process restart."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch, MagicMock
-import time
+import os
+import signal
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.tools.restart import RequestRestartTool, is_running_in_docker
-import src.tools.restart as restart_module
-
-
-@pytest.fixture(autouse=True)
-def reset_cooldown() -> None:
-    restart_module._last_restart = 0.0
 
 
 @pytest.fixture
@@ -23,7 +18,7 @@ def confirmed_notifier() -> AsyncMock:
     return n
 
 
-def test_is_running_in_docker_true(tmp_path: object) -> None:
+def test_is_running_in_docker_true() -> None:
     with patch("pathlib.Path.exists", return_value=True):
         assert is_running_in_docker() is True
 
@@ -34,12 +29,12 @@ def test_is_running_in_docker_false() -> None:
 
 
 @pytest.mark.asyncio
-async def test_restart_in_docker_calls_compose(confirmed_notifier: AsyncMock) -> None:
+async def test_restart_in_docker_sends_sigterm(confirmed_notifier: AsyncMock) -> None:
     tool = RequestRestartTool(confirmed_notifier)
     with patch("src.tools.restart.is_running_in_docker", return_value=True), \
-         patch("src.tools.restart.subprocess.Popen") as mock_popen:
+         patch("src.tools.restart.os.kill") as mock_kill:
         result = await tool.execute(reason="test", changes_summary="x")
-    mock_popen.assert_called_once_with(["docker", "compose", "restart", "assistant"])
+    mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
     assert "initiated" in result.lower()
 
 

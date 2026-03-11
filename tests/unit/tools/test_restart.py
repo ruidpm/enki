@@ -34,12 +34,13 @@ async def test_restart_requires_confirmation(denied_notifier: AsyncMock) -> None
 
 
 @pytest.mark.asyncio
-async def test_restart_confirmed_calls_subprocess(confirmed_notifier: AsyncMock) -> None:
+async def test_restart_confirmed_sends_sigterm_in_docker(confirmed_notifier: AsyncMock) -> None:
     tool = RequestRestartTool(confirmed_notifier)
     with patch("src.tools.restart.is_running_in_docker", return_value=True), \
-         patch("src.tools.restart.subprocess.Popen") as mock_popen:
+         patch("src.tools.restart.os.kill") as mock_kill:
         result = await tool.execute(reason="apply patch", changes_summary="new tool added")
-    mock_popen.assert_called_once_with(["docker", "compose", "restart", "assistant"])
+    import os, signal
+    mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
     assert "initiated" in result.lower()
 
 
@@ -47,7 +48,7 @@ async def test_restart_confirmed_calls_subprocess(confirmed_notifier: AsyncMock)
 async def test_restart_sends_notification_before_restart(confirmed_notifier: AsyncMock) -> None:
     tool = RequestRestartTool(confirmed_notifier)
     with patch("src.tools.restart.is_running_in_docker", return_value=True), \
-         patch("src.tools.restart.subprocess.Popen"):
+         patch("src.tools.restart.os.kill"):
         await tool.execute(reason="patch", changes_summary="change")
     confirmed_notifier.send.assert_awaited_once()
     msg = confirmed_notifier.send.call_args[0][0]
@@ -67,6 +68,6 @@ async def test_cooldown_allows_after_expiry(confirmed_notifier: AsyncMock) -> No
     tool = RequestRestartTool(confirmed_notifier)
     tool._last_restart = time.time() - _COOLDOWN_SECONDS - 1
     with patch("src.tools.restart.is_running_in_docker", return_value=True), \
-         patch("src.tools.restart.subprocess.Popen"):
+         patch("src.tools.restart.os.kill"):
         result = await tool.execute(reason="ok now", changes_summary="fine")
     assert "initiated" in result.lower()

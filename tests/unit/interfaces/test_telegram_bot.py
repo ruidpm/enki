@@ -42,9 +42,9 @@ def agent() -> MagicMock:
     return a
 
 
-def _make_update(chat_id: int = 12345, text: str = "hi") -> MagicMock:
+def _make_update(chat_id: int = 12345, text: str = "hi", chat_type: str = "private") -> MagicMock:
     update = MagicMock()
-    update.effective_chat = MagicMock(id=chat_id)
+    update.effective_chat = MagicMock(id=chat_id, type=chat_type)
     update.message = MagicMock()
     update.message.text = text
     update.message.reply_text = AsyncMock()
