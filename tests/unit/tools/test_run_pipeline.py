@@ -120,6 +120,25 @@ async def test_missing_workspace_returns_error(
 
 
 @pytest.mark.asyncio
+async def test_read_only_workspace_blocks_pipeline(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """READ_ONLY (trust_level=0) workspace must be blocked before confirmation."""
+    from src.workspaces.store import TrustLevel
+    workspace_store.add("readonly_ws", name="ReadOnly", local_path=str(tmp_path), trust_level=TrustLevel.READ_ONLY)
+
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store)
+    result = await tool.execute(workspace_id="readonly_ws", task="add login")
+    assert "BLOCKED" in result
+    assert "read_only" in result.lower() or "trust" in result.lower()
+    # No pipeline should have been created
+    assert pipeline_store.list_all() == []
+
+
+@pytest.mark.asyncio
 async def test_unknown_workspace_returns_error(
     tmp_path: Path,
     pipeline_store: PipelineStore,

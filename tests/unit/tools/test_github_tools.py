@@ -1,6 +1,7 @@
 """Tests for GitHub tools — branch protection and CLI dispatch."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -12,6 +13,17 @@ from src.tools.github_tools import (
     GitPushBranchTool,
     CreatePRTool,
 )
+from src.workspaces.store import WorkspaceStore, TrustLevel
+
+
+@pytest.fixture
+def workspace_store(tmp_path: Path) -> WorkspaceStore:
+    store = WorkspaceStore(tmp_path / "ws.db")
+    ws_path = tmp_path / "myapp"
+    ws_path.mkdir()
+    store.add("read_only_ws", name="ReadOnly", local_path=str(ws_path), trust_level=TrustLevel.READ_ONLY)
+    store.add("propose_ws", name="Propose", local_path=str(ws_path), trust_level=TrustLevel.PROPOSE)
+    return store
 
 
 def _mock_proc(returncode: int, stdout: str, stderr: str = "") -> MagicMock:
@@ -83,3 +95,65 @@ async def test_git_status_clean() -> None:
                return_value=_mock_proc(0, "")):
         result = await tool.execute()
     assert "clean" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Trust enforcement — workspace-aware tools
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_commit_blocked_for_read_only_workspace(workspace_store: WorkspaceStore) -> None:
+    tool = GitCommitTool(workspace_store=workspace_store)
+    result = await tool.execute(
+        workspace_id="read_only_ws", message="test commit", files=["."]
+    )
+    assert "BLOCKED" in result
+    assert "trust" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_commit_allowed_for_propose_workspace(workspace_store: WorkspaceStore) -> None:
+    tool = GitCommitTool(workspace_store=workspace_store)
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
+               return_value=_mock_proc(0, "[main abc1234] test commit")):
+        result = await tool.execute(
+            workspace_id="propose_ws", message="test commit", files=["."]
+        )
+    assert "BLOCKED" not in result
+
+
+@pytest.mark.asyncio
+async def test_push_blocked_for_read_only_workspace(workspace_store: WorkspaceStore) -> None:
+    tool = GitPushBranchTool(workspace_store=workspace_store)
+    result = await tool.execute(workspace_id="read_only_ws", branch="feat/new")
+    assert "BLOCKED" in result
+    assert "trust" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_pr_blocked_for_read_only_workspace(workspace_store: WorkspaceStore) -> None:
+    tool = CreatePRTool(workspace_store=workspace_store)
+    result = await tool.execute(
+        workspace_id="read_only_ws", title="My PR", branch="feat/x"
+    )
+    assert "BLOCKED" in result
+    assert "trust" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_commit_no_workspace_id_uses_cwd(workspace_store: WorkspaceStore) -> None:
+    """No workspace_id → operates on assistant's own repo, no trust check."""
+    tool = GitCommitTool(workspace_store=workspace_store)
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
+               return_value=_mock_proc(0, "[main abc] commit")):
+        result = await tool.execute(message="local commit", files=["."])
+    assert "BLOCKED" not in result
+
+
+@pytest.mark.asyncio
+async def test_commit_unknown_workspace_returns_error(workspace_store: WorkspaceStore) -> None:
+    tool = GitCommitTool(workspace_store=workspace_store)
+    result = await tool.execute(
+        workspace_id="ghost_ws", message="test", files=["."]
+    )
+    assert "error" in result.lower() or "not found" in result.lower()

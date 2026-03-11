@@ -306,3 +306,86 @@ async def test_init_missing_workspace_id(manage_tool: ManageWorkspaceTool) -> No
 async def test_unknown_action(manage_tool: ManageWorkspaceTool) -> None:
     result = await manage_tool.execute(action="explode", workspace_id="x")
     assert "unknown" in result.lower() or "invalid" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# ManageWorkspaceTool — clone URL validation + trust cap
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_clone_rejects_ftp_url(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
+    result = await manage_tool.execute(
+        action="clone",
+        workspace_id="bad",
+        git_remote="ftp://example.com/repo.git",
+        local_path=str(tmp_path / "dest"),
+    )
+    assert "error" in result.lower()
+    assert "https" in result.lower() or "git@" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_clone_rejects_bare_path(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
+    result = await manage_tool.execute(
+        action="clone",
+        workspace_id="bad",
+        git_remote="/home/user/local-repo",
+        local_path=str(tmp_path / "dest"),
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_clone_rejects_file_scheme(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
+    result = await manage_tool.execute(
+        action="clone",
+        workspace_id="bad",
+        git_remote="file:///home/user/repo",
+        local_path=str(tmp_path / "dest"),
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_clone_caps_trust_at_propose(
+    manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
+) -> None:
+    """Even if trust_level=4 is requested for clone, it's capped at PROPOSE (1)."""
+    dest = tmp_path / "cloned"
+    with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        mock_exec.return_value = proc
+
+        await manage_tool.execute(
+            action="clone",
+            workspace_id="highrepo",
+            git_remote="https://github.com/user/repo",
+            local_path=str(dest),
+            trust_level=TrustLevel.TRUSTED,  # 4 — should be capped
+        )
+
+    ws = store.get("highrepo")
+    assert ws is not None
+    assert ws["trust_level"] <= TrustLevel.PROPOSE  # capped at 1
+
+
+@pytest.mark.asyncio
+async def test_clone_ssh_url_allowed(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
+    """git@ SSH URLs should pass URL validation."""
+    dest = tmp_path / "ssh_clone"
+    with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        mock_exec.return_value = proc
+
+        result = await manage_tool.execute(
+            action="clone",
+            workspace_id="sshrepo",
+            git_remote="git@github.com:user/repo.git",
+            local_path=str(dest),
+        )
+
+    assert "error" not in result.lower() or "clone" in result.lower()
