@@ -152,11 +152,17 @@ class RunPipelineTool:
             return f"[ERROR] Workspace '{workspace_id}' not found. Use list_workspaces."
 
         from src.workspaces.store import TrustLevel
-        if workspace.get("trust_level", TrustLevel.PROPOSE) < TrustLevel.PROPOSE:
+        trust_level: int = workspace.get("trust_level", TrustLevel.PROPOSE)
+        if trust_level < TrustLevel.PROPOSE:
             return (
                 f"[BLOCKED] Workspace '{workspace_id}' is READ_ONLY (trust_level=0). "
                 f"Pipeline requires at least PROPOSE trust. "
                 f"Use manage_workspace set_trust to elevate."
+            )
+        if trust_level == TrustLevel.PROPOSE:
+            await self._notifier.send(
+                f"[Pipeline] Workspace '{workspace['name']}' trust is PROPOSE. "
+                f"Pipeline will pause for confirmation before IMPLEMENT and before opening the PR."
             )
 
         confirmed = await self._notifier.ask_single_confirm(

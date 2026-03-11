@@ -99,12 +99,16 @@ async def test_git_commit_with_workspace(ws_store: WorkspaceStore, tmp_path: Pat
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_git_push_branch_with_workspace(ws_store: WorkspaceStore, tmp_path: Path) -> None:
-    tool = GitPushBranchTool(workspace_store=ws_store)
+async def test_git_push_branch_with_workspace(tmp_path: Path) -> None:
+    from src.workspaces.store import TrustLevel
+    store = WorkspaceStore(tmp_path / "ws2.db")
+    (tmp_path / "myapp2").mkdir()
+    store.add("ws2", name="MyApp2", local_path=str(tmp_path / "myapp2"), trust_level=TrustLevel.AUTO_PUSH)
+    tool = GitPushBranchTool(workspace_store=store)
     with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_make_proc(stdout="pushed")) as mock:
-        result = await tool.execute(workspace_id="ws1", branch="feat/login")
+        result = await tool.execute(workspace_id="ws2", branch="feat/login")
     assert "pushed" in result
-    assert mock.call_args.kwargs["cwd"] == str(tmp_path / "myapp")
+    assert mock.call_args.kwargs["cwd"] == str(tmp_path / "myapp2")
 
 
 @pytest.mark.asyncio

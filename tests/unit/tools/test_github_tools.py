@@ -23,6 +23,7 @@ def workspace_store(tmp_path: Path) -> WorkspaceStore:
     ws_path.mkdir()
     store.add("read_only_ws", name="ReadOnly", local_path=str(ws_path), trust_level=TrustLevel.READ_ONLY)
     store.add("propose_ws", name="Propose", local_path=str(ws_path), trust_level=TrustLevel.PROPOSE)
+    store.add("auto_push_ws", name="AutoPush", local_path=str(ws_path), trust_level=TrustLevel.AUTO_PUSH)
     return store
 
 
@@ -128,6 +129,24 @@ async def test_push_blocked_for_read_only_workspace(workspace_store: WorkspaceSt
     result = await tool.execute(workspace_id="read_only_ws", branch="feat/new")
     assert "BLOCKED" in result
     assert "trust" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_push_blocked_for_propose_workspace(workspace_store: WorkspaceStore) -> None:
+    """push requires AUTO_PUSH (3); PROPOSE (1) is not enough."""
+    tool = GitPushBranchTool(workspace_store=workspace_store)
+    result = await tool.execute(workspace_id="propose_ws", branch="feat/new")
+    assert "BLOCKED" in result
+    assert "trust" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_push_allowed_for_auto_push_workspace(workspace_store: WorkspaceStore) -> None:
+    tool = GitPushBranchTool(workspace_store=workspace_store)
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
+               return_value=_mock_proc(0, "Branch 'feat/new' set up to track...")):
+        result = await tool.execute(workspace_id="auto_push_ws", branch="feat/new")
+    assert "BLOCKED" not in result
 
 
 @pytest.mark.asyncio

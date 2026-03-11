@@ -180,7 +180,7 @@ class GitPushBranchTool:
         if branch in _PROTECTED_BRANCHES:
             return f"[BLOCKED] Cannot push to protected branch '{branch}'."
         from src.workspaces.store import TrustLevel
-        if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
+        if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.AUTO_PUSH):
             return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
         if isinstance(cwd, tuple):
