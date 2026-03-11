@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import structlog
 
@@ -86,7 +87,7 @@ class MemoryStore:
         timestamp: str | None = None,
     ) -> int:
         """Append a conversation turn. Returns the new row id."""
-        ts = timestamp or datetime.now(timezone.utc).isoformat()
+        ts = timestamp or datetime.now(UTC).isoformat()
         log_date = ts[:10]
         with self._conn() as conn:
             cur = conn.execute(
@@ -154,7 +155,7 @@ class MemoryStore:
     def add_fact(self, fact: str, source_date: str | None = None) -> None:
         """Store a distilled fact in SQLite (legacy — facts.md is preferred)."""
         sd = source_date or date.today().isoformat()
-        created = datetime.now(timezone.utc).isoformat()
+        created = datetime.now(UTC).isoformat()
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO facts (fact, source_date, created_at) VALUES (?, ?, ?)",

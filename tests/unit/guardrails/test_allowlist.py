@@ -1,11 +1,12 @@
 """Tests for AllowlistHook."""
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from src.guardrails.allowlist import AllowlistHook, IMMUTABLE_CORE
-from src.tools import register, registry, Tool
-from typing import Any
+from src.guardrails.allowlist import IMMUTABLE_CORE, AllowlistHook
+from src.tools import register, registry
 
 
 @pytest.fixture

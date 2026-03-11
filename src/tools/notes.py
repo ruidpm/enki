@@ -1,7 +1,6 @@
 """Project notes tool — markdown files via CLI (cat, grep, tee)."""
 from __future__ import annotations
 
-import asyncio
 import re
 from pathlib import Path
 from typing import Any

@@ -1,8 +1,9 @@
 """Tests for MemoryStore."""
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from src.memory.store import MemoryStore
 
@@ -110,7 +111,7 @@ def test_get_today_log_tail_returns_recent_lines(tmp_path: Path) -> None:
     tail = s.get_today_log_tail(n=5)
     assert "message 9" in tail
     # Should not include message 0..4 when tail=5
-    lines = tail.strip().splitlines()
+    tail.strip().splitlines()
     # Each turn writes 2 lines (content line + blank) — so 5 turns = up to 10 lines
     # Just verify we got the last messages
     assert "message 9" in tail

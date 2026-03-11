@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.workspaces.store import WorkspaceStore, TrustLevel
 from src.tools.manage_workspace import ListWorkspacesTool, ManageWorkspaceTool
+from src.workspaces.store import TrustLevel, WorkspaceStore
 
 
 @pytest.fixture
@@ -170,7 +170,7 @@ async def test_clone_runs_git_clone(
         proc.communicate = AsyncMock(return_value=(b"", b""))
         mock_exec.return_value = proc
 
-        result = await manage_tool.execute(
+        await manage_tool.execute(
             action="clone",
             workspace_id="myrepo",
             name="My Repo",

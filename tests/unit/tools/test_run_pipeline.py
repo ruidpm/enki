@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,8 +10,8 @@ import pytest
 
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.teams.store import TeamsStore
-from src.workspaces.store import WorkspaceStore
 from src.tools.run_pipeline import RunPipelineTool
+from src.workspaces.store import WorkspaceStore
 
 
 def _make_notifier(confirmed: bool = True) -> AsyncMock:
@@ -588,10 +589,8 @@ async def test_run_background_cancelled_marks_aborted(
         await asyncio.sleep(0)
         bg.cancel()
 
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await bg
-        except asyncio.CancelledError:
-            pass
 
     p = pipeline_store.get(pipeline_id)
     assert p is not None

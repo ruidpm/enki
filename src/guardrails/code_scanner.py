@@ -5,7 +5,6 @@ import ast
 import re
 from dataclasses import dataclass
 
-
 # CLI binaries that are explicitly permitted in tool code
 ALLOWED_SUBPROCESS_BINARIES: frozenset[str] = frozenset({
     "sqlite3", "curl", "gh", "gcalcli", "jq",
@@ -76,16 +75,15 @@ class CodeScanner:
             return ScanResult(blocked=True, reason=f"Blocked builtin: '{node.id}'")
 
         # Attribute access: os.system, subprocess.run, etc.
-        if isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name):
-                qualified = f"{node.value.id}.{node.attr}"
-                _subprocess_allowed = ("restart.py", "claude_code.py")
-                if node.value.id == "subprocess" and any(
-                    filename.endswith(f) for f in _subprocess_allowed
-                ):
-                    return ScanResult(blocked=False)
-                if node.value.id in BLOCKED_MODULES:
-                    return ScanResult(blocked=True, reason=f"Blocked: '{qualified}'")
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            qualified = f"{node.value.id}.{node.attr}"
+            _subprocess_allowed = ("restart.py", "claude_code.py")
+            if node.value.id == "subprocess" and any(
+                filename.endswith(f) for f in _subprocess_allowed
+            ):
+                return ScanResult(blocked=False)
+            if node.value.id in BLOCKED_MODULES:
+                return ScanResult(blocked=True, reason=f"Blocked: '{qualified}'")
 
         return ScanResult(blocked=False)
 

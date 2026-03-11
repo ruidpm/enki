@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.pipeline.store import PipelineStore, PipelineStage, PipelineStatus
+from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 
 
 @pytest.fixture

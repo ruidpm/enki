@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sqlite3
-import uuid
 from pathlib import Path
 from typing import Any
 

@@ -5,9 +5,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from telegram import Message
 
 from src.interfaces.telegram_bot import TelegramBot
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -141,7 +141,7 @@ def _make_callback_update(data: str, chat_id: int = 12345) -> MagicMock:
     query.data = data
     query.answer = AsyncMock()
     query.edit_message_reply_markup = AsyncMock()
-    query.message = MagicMock()
+    query.message = MagicMock(spec=Message)
     query.message.chat_id = chat_id
     update.callback_query = query
     return update

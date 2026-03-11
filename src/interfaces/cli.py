@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 
 import click
@@ -25,10 +26,8 @@ async def _spinner(stop: asyncio.Event) -> None:
         sys.stdout.write(f"\r{_SPINNER_FRAMES[i % len(_SPINNER_FRAMES)]} thinking...")
         sys.stdout.flush()
         i += 1
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.shield(stop.wait()), timeout=0.1)
-        except asyncio.TimeoutError:
-            pass
     _spinner_active = False
     sys.stdout.write("\r" + " " * 20 + "\r")
     sys.stdout.flush()
@@ -47,7 +46,7 @@ async def _prompt_async(prompt: str) -> str:
         raise
 
 
-def run_cli(agent: object, compactor: object = None) -> None:  # type: ignore[type-arg]
+def run_cli(agent: object, compactor: object = None) -> None:
     """Start the interactive CLI REPL."""
     from src.agent import Agent
     assert isinstance(agent, Agent)

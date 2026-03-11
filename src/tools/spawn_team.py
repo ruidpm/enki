@@ -9,12 +9,15 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
+
+if TYPE_CHECKING:
+    from src.jobs import JobRegistry
 
 log = structlog.get_logger()
 
@@ -58,13 +61,13 @@ class SpawnTeamTool:
         config: Any,
         tool_registry: dict[str, Any],
         notifier: Notifier,
-        job_registry: object = None,
+        job_registry: JobRegistry | None = None,
     ) -> None:
         self._store = store
         self._config = config
         self._registry = tool_registry
         self._notifier = notifier
-        self._job_registry = job_registry
+        self._job_registry: JobRegistry | None = job_registry
         self._agent: Agent | None = None
 
     def set_agent(self, agent: Agent) -> None:
@@ -104,9 +107,10 @@ class SpawnTeamTool:
         )
 
         if self._job_registry is not None:
-            from src.jobs import JobRegistry
-            assert isinstance(self._job_registry, JobRegistry)
-            self._job_registry.start(job_id, job_type="team", description=f"{team_id}: {task[:60]}", model=self._config.haiku_model)
+            self._job_registry.start(
+                job_id, job_type="team",
+                description=f"{team_id}: {task[:60]}", model=self._config.haiku_model,
+            )
 
         bg_task = asyncio.create_task(self._run_background(job_id, team_id, team, subset, task))
 
@@ -147,8 +151,6 @@ class SpawnTeamTool:
         except asyncio.CancelledError:
             log.info("spawn_team_cancelled", team_id=team_id, job_id=job_id)
             if self._job_registry is not None:
-                from src.jobs import JobRegistry
-                assert isinstance(self._job_registry, JobRegistry)
                 self._job_registry.finish(job_id, success=False, error="Cancelled")
             raise
         except Exception as exc:
@@ -169,8 +171,6 @@ class SpawnTeamTool:
         )
 
         if self._job_registry is not None:
-            from src.jobs import JobRegistry
-            assert isinstance(self._job_registry, JobRegistry)
             self._job_registry.finish(job_id, success=success)
 
         log.info("spawn_team_done", team_id=team_id, job_id=job_id, success=success, duration_s=duration)

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.tools.restart import RequestRestartTool, _COOLDOWN_SECONDS
+from src.tools.restart import _COOLDOWN_SECONDS, RequestRestartTool
 
 
 @pytest.fixture
@@ -39,7 +39,8 @@ async def test_restart_confirmed_sends_sigterm_in_docker(confirmed_notifier: Asy
     with patch("src.tools.restart.is_running_in_docker", return_value=True), \
          patch("src.tools.restart.os.kill") as mock_kill:
         result = await tool.execute(reason="apply patch", changes_summary="new tool added")
-    import os, signal
+    import os
+    import signal
     mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
     assert "initiated" in result.lower()
 

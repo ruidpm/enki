@@ -44,7 +44,7 @@ def _resolve_cwd(workspace_id: str | None, workspace_store: object) -> str | tup
     local_path: str = ws["local_path"]
     if not Path(local_path).exists():
         return None, f"[ERROR] Workspace path '{local_path}' does not exist on disk."
-    return local_path  # type: ignore[return-value]
+    return local_path
 
 
 def _check_trust(workspace_id: str | None, workspace_store: object, required: int) -> str | None:
@@ -53,7 +53,7 @@ def _check_trust(workspace_id: str | None, workspace_store: object, required: in
         return None  # assistant repo — no trust restriction
     if workspace_store is None:
         return None
-    from src.workspaces.store import WorkspaceStore, TrustLevel
+    from src.workspaces.store import TrustLevel, WorkspaceStore
     assert isinstance(workspace_store, WorkspaceStore)
     ws = workspace_store.get(workspace_id)
     if ws is None:

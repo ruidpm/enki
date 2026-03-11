@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.tools.claude_code import RunClaudeCodeTool
-from src.workspaces.store import WorkspaceStore, TrustLevel
+from src.workspaces.store import TrustLevel, WorkspaceStore
 
 
 @pytest.fixture

@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import structlog
 
-from .events import Tier1Event, Tier2Event, AuditRecord
-from .integrity import compute_data_hash, compute_chain_hash
+from .events import Tier1Event, Tier2Event
+from .integrity import compute_chain_hash, compute_data_hash
 
 log = structlog.get_logger()
 
@@ -71,7 +72,7 @@ class AuditDB:
     async def log_tier1(
         self, event_type: Tier1Event, session_id: str, data: dict[str, Any]
     ) -> None:
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         full_data = {"event_type": event_type, "session_id": session_id,
                      "timestamp": timestamp, **data}
         data_hash = compute_data_hash(full_data)
@@ -89,7 +90,7 @@ class AuditDB:
     async def log_tier2(
         self, event_type: Tier2Event, session_id: str, data: dict[str, Any]
     ) -> None:
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO tier2 (event_type, session_id, timestamp, data) VALUES (?, ?, ?, ?)",
@@ -120,7 +121,7 @@ class AuditDB:
 
     def purge_old_tier2(self, days: int = 30) -> int:
         """Delete Tier 2 records older than `days`. Returns count deleted."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         with self._conn() as conn:
             cur = conn.execute("DELETE FROM tier2 WHERE timestamp < ?", (cutoff,))
             return cur.rowcount

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.guardrails.code_scanner import CodeScanner, ScanResult
+from src.guardrails.code_scanner import CodeScanner
 
 
 @pytest.fixture

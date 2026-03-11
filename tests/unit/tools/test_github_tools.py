@@ -2,18 +2,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.tools.github_tools import (
-    GitStatusTool,
-    GitDiffTool,
+    CreatePRTool,
     GitCommitTool,
     GitPushBranchTool,
-    CreatePRTool,
+    GitStatusTool,
 )
-from src.workspaces.store import WorkspaceStore, TrustLevel
+from src.workspaces.store import TrustLevel, WorkspaceStore
 
 
 @pytest.fixture

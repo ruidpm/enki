@@ -1,10 +1,12 @@
 """Sub-agent runner — isolated agentic loop with restricted tool subset."""
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import anthropic
 import structlog
+from anthropic.types import TextBlock, ToolUseBlock
 
 log = structlog.get_logger()
 
@@ -49,9 +51,12 @@ class SubAgentRunner:
         """Run the sub-agent on the given task. Returns (response_text, total_tokens_used)."""
         messages: list[dict[str, Any]] = [{"role": "user", "content": task}]
         tool_defs = self._tool_defs()
-        system = (
-            (self._system_prefix + "\n\n") if self._system_prefix else ""
-        ) + "You are a helpful sub-agent. Complete the given task and return a concise result. Plain text only — no markdown, no **bold**, no # headers, no bullet points with *, no backtick code blocks."
+        _base = (
+            "You are a helpful sub-agent. Complete the given task and return a concise result. "
+            "Plain text only — no markdown, no **bold**, no # headers, no bullet points with *, "
+            "no backtick code blocks."
+        )
+        system = ((self._system_prefix + "\n\n") if self._system_prefix else "") + _base
 
         total_tokens = 0
 
@@ -60,8 +65,8 @@ class SubAgentRunner:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=system,
-                tools=tool_defs if tool_defs else [],
-                messages=messages,
+                tools=tool_defs if tool_defs else [],  # type: ignore[arg-type]
+                messages=messages,  # type: ignore[arg-type]
             )
 
             step_in = response.usage.input_tokens
@@ -71,13 +76,10 @@ class SubAgentRunner:
                 self._on_tokens(step_in, step_out)
 
             # Collect tool use blocks
-            tool_uses = [
-                b for b in response.content
-                if getattr(b, "type", None) == "tool_use"
-            ]
+            tool_uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
 
             if response.stop_reason == "end_turn" or not tool_uses:
-                texts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
+                texts = [b.text for b in response.content if isinstance(b, TextBlock)]
                 return "\n".join(texts) if texts else "(no response)", total_tokens
 
             # Add assistant message with tool use blocks

@@ -1,9 +1,7 @@
 """Unit tests for JobRegistry token tracking."""
 from __future__ import annotations
 
-import pytest
-
-from src.jobs import JobRegistry, JobStatus
+from src.jobs import JobRegistry
 
 
 def _start(registry: JobRegistry, job_id: str = "abc123", model: str = "claude-haiku-4-5") -> None:

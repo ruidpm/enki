@@ -1,12 +1,13 @@
 """Proactive scheduler — APScheduler cron jobs for briefings and alerts."""
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:
     from src.schedule.store import ScheduleStore
@@ -31,7 +32,7 @@ class Scheduler:
         self,
         agent: Any,
         notifier: Notifier,
-        store: "ScheduleStore | None" = None,
+        store: ScheduleStore | None = None,
     ) -> None:
         self._agent = agent
         self._notifier = notifier
@@ -56,10 +57,8 @@ class Scheduler:
     def add_job(self, job: ScheduledJob) -> None:
         """Register or overwrite a scheduled job."""
         self.jobs[job.job_id] = job
-        try:
+        with contextlib.suppress(Exception):
             self._scheduler.remove_job(job.job_id)
-        except Exception:
-            pass
         if job.enabled:
             minute, hour, dom, month, dow = job.cron.split()
             self._scheduler.add_job(
@@ -78,10 +77,8 @@ class Scheduler:
     def remove_job(self, job_id: str) -> None:
         """Remove a job from APScheduler and the in-memory registry."""
         self.jobs.pop(job_id, None)
-        try:
+        with contextlib.suppress(Exception):
             self._scheduler.remove_job(job_id)
-        except Exception:
-            pass
 
     def set_job_enabled(self, job_id: str, enabled: bool) -> None:
         """Pause or resume a job without losing its config."""
@@ -92,10 +89,8 @@ class Scheduler:
         if enabled:
             self.add_job(job)
         else:
-            try:
+            with contextlib.suppress(Exception):
                 self._scheduler.remove_job(job_id)
-            except Exception:
-                pass
 
     async def _run_job(self, job: ScheduledJob) -> None:
         log.info("job_running", job_id=job.job_id)
@@ -106,12 +101,10 @@ class Scheduler:
                 self._store.record_run(job.job_id)
         except Exception as exc:
             log.error("job_error", job_id=job.job_id, error=str(exc))
-            try:
+            with contextlib.suppress(Exception):
                 await self._notifier.send(
                     f"Job `{job.job_id}` failed: {exc}"
                 )
-            except Exception:
-                pass
 
     def start(self) -> None:
         self._scheduler.start()

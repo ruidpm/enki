@@ -17,7 +17,6 @@ from src.guardrails.loop_detector import LoopDetectorHook
 from src.guardrails.rate_limiter import RateLimiterHook
 from src.guardrails.scope_check import ScopeCheckHook
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

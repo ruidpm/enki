@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.workspaces.store import WorkspaceStore, TrustLevel
+from src.workspaces.store import TrustLevel, WorkspaceStore
 
 
 @pytest.fixture

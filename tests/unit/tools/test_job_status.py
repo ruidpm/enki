@@ -1,8 +1,6 @@
 """Tests for JobRegistry and JobStatusTool."""
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from src.jobs import JobRegistry, JobStatus

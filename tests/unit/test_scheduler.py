@@ -1,10 +1,11 @@
 """Tests for the scheduler."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
-from src.scheduler import Scheduler, ScheduledJob, default_jobs
+from src.scheduler import ScheduledJob, Scheduler, default_jobs
 
 
 @pytest.fixture
@@ -68,7 +69,7 @@ def test_disabled_job_not_added_to_apscheduler(scheduler: Scheduler) -> None:
     scheduler.add_job(job)
     assert "disabled" in scheduler.jobs
     # APScheduler should not have this job since it's disabled
-    with pytest.raises(Exception):
+    with pytest.raises((AttributeError, TypeError, KeyError)):
         scheduler._scheduler.get_job("disabled") or (_ for _ in ()).throw(KeyError("not found"))
 
 

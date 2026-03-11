@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.tools.claude_code import RunClaudeCodeTool, _GIST_THRESHOLD
+from src.tools.claude_code import _GIST_THRESHOLD, RunClaudeCodeTool
 
 
 @pytest.fixture

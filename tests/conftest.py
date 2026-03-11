@@ -1,15 +1,13 @@
 """Shared fixtures for all tests."""
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src.config import Settings
 from src.audit.db import AuditDB
+from src.config import Settings
 
 
 @pytest.fixture

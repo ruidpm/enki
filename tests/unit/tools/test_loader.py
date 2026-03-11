@@ -7,9 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.tools.loader import load_tools_from_dir, _SKIP_FILES
 from src.tools import registry
-
+from src.tools.loader import _SKIP_FILES, load_tools_from_dir
 
 VALID_TOOL_SRC = '''
 from typing import Any
@@ -71,15 +70,18 @@ def _load(tool_dir: Path) -> list[str]:
     with patch("src.tools.loader.Path") as mock_path_cls:
         # Make the package name resolve to tmp_dir.name (e.g. "tmp_abc123")
         mock_path_cls.return_value.parent = tool_dir.parent
-        return load_tools_from_dir.__wrapped__(tool_dir) if hasattr(load_tools_from_dir, '__wrapped__') else _load_direct(tool_dir)
+        if hasattr(load_tools_from_dir, '__wrapped__'):
+            return load_tools_from_dir.__wrapped__(tool_dir)
+        return _load_direct(tool_dir)
 
 
 def _load_direct(directory: Path) -> list[str]:
     """Load directly with the directory treated as a top-level package on sys.path."""
     import importlib
     import inspect
+
     from src.tools import register, registry
-    from src.tools.loader import _is_tool_class, _SKIP_FILES
+    from src.tools.loader import _SKIP_FILES, _is_tool_class
 
     newly_registered: list[str] = []
     package_name = directory.name
@@ -92,10 +94,7 @@ def _load_direct(directory: Path) -> list[str]:
 
         module_name = f"{package_name}.{path.stem}"
         try:
-            if module_name in sys.modules:
-                module = sys.modules[module_name]
-            else:
-                module = importlib.import_module(module_name)
+            module = sys.modules[module_name] if module_name in sys.modules else importlib.import_module(module_name)
         except Exception:
             continue
 

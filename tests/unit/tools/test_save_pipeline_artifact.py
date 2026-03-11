@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.pipeline.store import PipelineStage, PipelineStore
+from src.pipeline.store import PipelineStore
 from src.tools.save_pipeline_artifact import SavePipelineArtifactTool
 
 

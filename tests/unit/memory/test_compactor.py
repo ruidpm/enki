@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from anthropic.types import TextBlock
 
 from src.memory.compactor import MemoryCompactor
 from src.memory.store import MemoryStore
@@ -23,7 +24,7 @@ def facts_path(tmp_path: Path) -> Path:
 def _make_client(response_text: str) -> MagicMock:
     client = MagicMock()
     msg = MagicMock()
-    msg.content = [MagicMock(text=response_text)]
+    msg.content = [MagicMock(spec=TextBlock, text=response_text)]
     client.messages = MagicMock()
     client.messages.create = AsyncMock(return_value=msg)
     return client
@@ -142,5 +143,5 @@ async def test_facts_md_format(
     store.append_turn("sess5", "user", "I work in Lisbon")
 
     await compactor.compact_session("sess5")
-    lines = [l for l in facts_path.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in facts_path.read_text().splitlines() if ln.strip()]
     assert all(line.startswith("- ") for line in lines)

@@ -67,7 +67,7 @@ class JobRegistry:
             "tokens_out": 0,
         }
 
-    def set_task(self, job_id: str, task: "asyncio.Task[Any]") -> None:
+    def set_task(self, job_id: str, task: asyncio.Task[Any]) -> None:
         """Store the asyncio Task so it can be cancelled later."""
         if job_id in self._jobs:
             self._jobs[job_id]["_task"] = task

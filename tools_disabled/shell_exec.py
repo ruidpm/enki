@@ -1,10 +1,14 @@
 
-from typing import Any
 import asyncio
+from typing import Any
+
 
 class ShellExecTool:
     name = "shell_exec"
-    description = "Execute a shell command and return stdout/stderr output. Use for simple filesystem operations, running scripts, etc."
+    description = (
+        "Execute a shell command and return stdout/stderr output."
+        " Use for simple filesystem operations, running scripts, etc."
+    )
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {

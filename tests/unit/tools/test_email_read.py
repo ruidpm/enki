@@ -19,7 +19,6 @@ def tool() -> EmailReadTool:
 
 def _make_imap(messages: list[tuple[str, str, str]]) -> MagicMock:
     """Build a mock IMAP4_SSL that returns the given (subject, sender, date) tuples."""
-    import email as email_lib
     from email.mime.text import MIMEText
 
     imap = MagicMock()

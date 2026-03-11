@@ -63,10 +63,7 @@ def load_tools_from_dir(directory: Path) -> list[str]:
         module_name = f"{package_name}.{path.stem}"
 
         try:
-            if module_name in sys.modules:
-                module = sys.modules[module_name]
-            else:
-                module = importlib.import_module(module_name)
+            module = sys.modules[module_name] if module_name in sys.modules else importlib.import_module(module_name)
         except Exception as exc:
             log.warning("tool_load_error", file=path.name, error=str(exc))
             continue

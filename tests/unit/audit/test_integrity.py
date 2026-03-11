@@ -1,9 +1,7 @@
 """Tests for hash chain integrity."""
 from __future__ import annotations
 
-import pytest
-
-from src.audit.integrity import compute_data_hash, compute_chain_hash, verify_chain
+from src.audit.integrity import compute_chain_hash, compute_data_hash, verify_chain
 
 
 def make_records(n: int) -> list[dict]:  # type: ignore[type-arg]

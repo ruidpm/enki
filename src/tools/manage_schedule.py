@@ -13,7 +13,7 @@ import structlog
 from src.schedule.store import ScheduleStore
 
 if TYPE_CHECKING:
-    from src.scheduler import Scheduler, ScheduledJob
+    from src.scheduler import Scheduler
 
 log = structlog.get_logger()
 
@@ -77,7 +77,10 @@ class ManageScheduleTool:
             "action": {
                 "type": "string",
                 "enum": ["add", "update", "pause", "resume", "remove"],
-                "description": "add: create new job | update: edit prompt/cron of existing job | pause: disable | resume: re-enable | remove: delete",
+                "description": (
+                    "add: create new job | update: edit prompt/cron of existing job"
+                    " | pause: disable | resume: re-enable | remove: delete"
+                ),
             },
             "job_id": {
                 "type": "string",
@@ -97,9 +100,9 @@ class ManageScheduleTool:
 
     def __init__(self, store: ScheduleStore) -> None:
         self._store = store
-        self._scheduler: "Scheduler | None" = None
+        self._scheduler: Scheduler | None = None
 
-    def set_scheduler(self, scheduler: "Scheduler") -> None:
+    def set_scheduler(self, scheduler: Scheduler) -> None:
         """Wire the live Scheduler after it's built (avoids circular dep at startup)."""
         self._scheduler = scheduler
 

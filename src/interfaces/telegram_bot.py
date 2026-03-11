@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import os
-import tempfile
 import uuid
 from typing import Any
 
 import structlog
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.error import Conflict
 from telegram.ext import (
     Application,
@@ -62,7 +62,7 @@ class TelegramBot:
         self._app.add_handler(
             MessageHandler(filters.PHOTO, self._on_photo, block=False)
         )
-        self._app.add_error_handler(self._on_error)  # type: ignore[arg-type]
+        self._app.add_error_handler(self._on_error)
 
     def _authorized(self, update: Update) -> bool:
         chat = update.effective_chat
@@ -129,14 +129,10 @@ class TelegramBot:
 
             async def _keep_typing() -> None:
                 while not stop_typing.is_set():
-                    try:
+                    with contextlib.suppress(Exception):
                         await update.message.chat.send_action("typing")  # type: ignore[union-attr]
-                    except Exception:
-                        pass
-                    try:
+                    with contextlib.suppress(TimeoutError):
                         await asyncio.wait_for(stop_typing.wait(), timeout=4.0)
-                    except asyncio.TimeoutError:
-                        pass
 
             typing_task = asyncio.create_task(_keep_typing())
             try:
@@ -148,10 +144,8 @@ class TelegramBot:
             finally:
                 stop_typing.set()
                 typing_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await typing_task
-                except asyncio.CancelledError:
-                    pass
 
     async def _on_message(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._authorized(update) or not update.message or not update.message.text:
@@ -243,7 +237,8 @@ class TelegramBot:
             return
         await query.answer()
 
-        if not self._authorized_chat(query.message.chat_id):
+        msg = query.message
+        if not isinstance(msg, Message) or not self._authorized_chat(msg.chat_id):
             return
 
         data = query.data or ""
@@ -283,7 +278,7 @@ class TelegramBot:
             result = await asyncio.wait_for(fut, timeout=self._confirm_timeout)
             self._pending.pop(key, None)
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(key, None)
             log.warning("telegram_confirm_timeout", key=key)
             return False
@@ -337,10 +332,10 @@ class TelegramBot:
         await self._app.bot.send_message(self._allowed_chat_id, prompt)
         loop = asyncio.get_event_loop()
         fut: asyncio.Future[str] = loop.create_future()
-        self._pending_question: asyncio.Future[str] | None = fut
+        self._pending_question = fut
         try:
             return await asyncio.wait_for(fut, timeout=timeout_s)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending_question = None
             log.warning("telegram_free_text_timeout")
             return None

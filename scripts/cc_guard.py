@@ -36,10 +36,7 @@ def _extract_path(tool_name: str, tool_input: dict[str, object]) -> str:
 def _is_protected(path: str) -> bool:
     # Normalise: strip leading ./ prefix or leading /
     normalized = path.removeprefix("./").lstrip("/")
-    for protected in PROTECTED_PATHS:
-        if normalized == protected or normalized.startswith(protected):
-            return True
-    return False
+    return any(normalized == protected or normalized.startswith(protected) for protected in PROTECTED_PATHS)
 
 
 def main() -> int:

@@ -1,9 +1,7 @@
 """Tests for model routing logic."""
 from __future__ import annotations
 
-import pytest
-
-from src.agent import classify_complexity, ModelTier
+from src.agent import ModelTier, classify_complexity
 
 
 def test_simple_lookup_routes_to_haiku() -> None:

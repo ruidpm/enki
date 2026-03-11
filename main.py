@@ -1,8 +1,10 @@
 """Enki — entry point."""
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -66,10 +68,8 @@ def _acquire_pid_lock() -> None:
 
 
 def _release_pid_lock() -> None:
-    try:
+    with contextlib.suppress(OSError):
         _PID_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 class BuildResult(NamedTuple):
@@ -84,52 +84,57 @@ def _build_agent(notifier: object = None) -> BuildResult:
     """Wire up all dependencies and return a BuildResult."""
     import uuid
     from pathlib import Path
-    from src.config import Settings
+
+    import anthropic
+
     from src.agent import Agent
     from src.audit.db import AuditDB
-    from src.memory.store import MemoryStore
+    from src.config import Settings
     from src.guardrails import GuardrailChain
     from src.guardrails.allowlist import AllowlistHook
-    from src.guardrails.scope_check import ScopeCheckHook
+    from src.guardrails.audit_hook import AuditHook
+    from src.guardrails.confirmation_gate import ConfirmationGateHook
+    from src.guardrails.cost_guard import CostGuardHook
     from src.guardrails.loop_detector import LoopDetectorHook
     from src.guardrails.rate_limiter import RateLimiterHook
-    from src.guardrails.cost_guard import CostGuardHook
-    from src.guardrails.confirmation_gate import ConfirmationGateHook
-    from src.guardrails.audit_hook import AuditHook
-    from src.tools.tasks import TasksTool
-    from src.tools.web_search import WebSearchTool
-    from src.tools.notes import NotesTool
-    from src.tools.calendar_read import CalendarReadTool
-    from src.tools.github_tools import (
-        GitStatusTool, GitDiffTool, GitCommitTool,
-        GitPushBranchTool, CreatePRTool,
-    )
-    from src.tools.save_pipeline_artifact import SavePipelineArtifactTool
-    from src.tools.run_pipeline import RunPipelineTool
+    from src.guardrails.scope_check import ScopeCheckHook
     from src.jobs import JobRegistry
-    from src.tools.job_status import JobStatusTool
+    from src.memory.compactor import MemoryCompactor
+    from src.memory.store import MemoryStore
+    from src.pipeline.store import PipelineStore
+    from src.schedule.store import ScheduleStore
+    from src.teams.store import TeamsStore
+    from src.teams.templates import seed_engineering_teams
+    from src.tools import register, registry
+    from src.tools.calendar_read import CalendarReadTool
+    from src.tools.claude_code import RunClaudeCodeTool
     from src.tools.email_read import EmailReadTool
     from src.tools.evolve import ProposeTool
+    from src.tools.github_tools import (
+        CreatePRTool,
+        GitCommitTool,
+        GitDiffTool,
+        GitPushBranchTool,
+        GitStatusTool,
+    )
+    from src.tools.job_status import JobStatusTool
+    from src.tools.loader import load_tools_from_dir
+    from src.tools.manage_pipeline import ManagePipelineTool
+    from src.tools.manage_schedule import ListScheduleTool, ManageScheduleTool
+    from src.tools.manage_team import ManageTeamTool
+    from src.tools.manage_workspace import ListWorkspacesTool, ManageWorkspaceTool
+    from src.tools.notes import NotesTool
     from src.tools.remove_tool import RemoveToolTool
     from src.tools.restart import RequestRestartTool
+    from src.tools.run_pipeline import RunPipelineTool
+    from src.tools.save_pipeline_artifact import SavePipelineArtifactTool
     from src.tools.send_message import SendMessageTool
-    from src.tools.claude_code import RunClaudeCodeTool
     from src.tools.spawn_agent import SpawnAgentTool
-    from src.tools.loader import load_tools_from_dir
-    from src.tools import registry, register
-    from src.memory.compactor import MemoryCompactor
-    import anthropic
-    from src.teams.store import TeamsStore
     from src.tools.spawn_team import SpawnTeamTool
+    from src.tools.tasks import TasksTool
     from src.tools.team_report import TeamReportTool
-    from src.tools.manage_team import ManageTeamTool
-    from src.schedule.store import ScheduleStore
-    from src.tools.manage_schedule import ListScheduleTool, ManageScheduleTool
+    from src.tools.web_search import WebSearchTool
     from src.workspaces.store import WorkspaceStore
-    from src.tools.manage_workspace import ListWorkspacesTool, ManageWorkspaceTool
-    from src.teams.templates import seed_engineering_teams
-    from src.pipeline.store import PipelineStore
-    from src.tools.manage_pipeline import ManagePipelineTool
 
     config = Settings()  # reads .env, fails fast on missing keys
 
@@ -175,11 +180,12 @@ def _build_agent(notifier: object = None) -> BuildResult:
         async def ask_free_text(self, prompt: str, timeout_s: int = 300) -> str | None:
             click.echo(f"\n{prompt}")
             import asyncio
+
             from src.interfaces.cli import _prompt_async
-            loop = asyncio.get_event_loop()
+            asyncio.get_event_loop()
             try:
                 return await asyncio.wait_for(_prompt_async("Your answer: "), timeout=timeout_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return None
 
     _notifier_instance = notifier if notifier is not None else _CliNotifier()
@@ -207,7 +213,10 @@ def _build_agent(notifier: object = None) -> BuildResult:
     teams_db_path = data_dir / "teams.db"
     teams_store = TeamsStore(teams_db_path)
     seed_engineering_teams(teams_store)
-    _spawn_team_tool = SpawnTeamTool(store=teams_store, config=config, tool_registry=registry, notifier=_notifier_instance, job_registry=job_registry)
+    _spawn_team_tool = SpawnTeamTool(
+        store=teams_store, config=config, tool_registry=registry,
+        notifier=_notifier_instance, job_registry=job_registry,
+    )
     register(_spawn_team_tool)
     register(TeamReportTool(store=teams_store))
     register(ManageTeamTool(store=teams_store))
@@ -329,10 +338,9 @@ def chat() -> None:
 @cli.command()
 def telegram() -> None:
     """Start Telegram bot."""
+    from src.config import Settings
     from src.interfaces.telegram_bot import TelegramBot
     from src.scheduler import Scheduler, default_jobs
-
-    from src.config import Settings
     config = Settings()
 
     bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id)
@@ -393,15 +401,13 @@ def telegram() -> None:
             if online:
                 if offline_since is not None:
                     duration_min = int((now - offline_since) / 60)
-                    from datetime import datetime, timezone
-                    lost_at = datetime.fromtimestamp(offline_since, tz=timezone.utc).strftime("%H:%M UTC")
-                    try:
+                    from datetime import datetime
+                    lost_at = datetime.fromtimestamp(offline_since, tz=UTC).strftime("%H:%M UTC")
+                    with contextlib.suppress(Exception):
                         await bot.send(
                             f"Internet restored. Was offline from {lost_at} "
                             f"({duration_min} min ago)."
                         )
-                    except Exception:
-                        pass
                     offline_since = None
             else:
                 if offline_since is None:
@@ -413,6 +419,7 @@ def telegram() -> None:
     async def _on_startup(_app: object) -> None:
         import asyncio
         import time
+
         from telegram import BotCommand, MenuButtonCommands
         from telegram.ext import Application as _App
         assert isinstance(_app, _App)
@@ -431,8 +438,8 @@ def telegram() -> None:
                 last_ts = int(_LAST_SEEN_FILE.read_text().strip())
                 gap = int(time.time()) - last_ts
                 if gap > 120:
-                    from datetime import datetime, timezone
-                    last_str = datetime.fromtimestamp(last_ts, tz=timezone.utc).strftime(
+                    from datetime import datetime
+                    last_str = datetime.fromtimestamp(last_ts, tz=UTC).strftime(
                         "%Y-%m-%d %H:%M UTC"
                     )
                     await bot.send(
@@ -460,7 +467,7 @@ def telegram() -> None:
                 compactor.compact_session(agent.session_id),  # type: ignore[attr-defined]
                 timeout=30.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("compaction_timeout")
         except Exception as exc:
             log.warning("compaction_failed", error=str(exc))

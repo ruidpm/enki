@@ -18,8 +18,7 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
-from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
@@ -27,6 +26,9 @@ from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
 from src.workspaces.store import WorkspaceStore
+
+if TYPE_CHECKING:
+    from src.jobs import JobRegistry
 
 log = structlog.get_logger()
 
@@ -129,7 +131,7 @@ class RunPipelineTool:
         teams_store: TeamsStore,
         config: Any,
         tool_registry: dict[str, Any],
-        job_registry: object = None,
+        job_registry: JobRegistry | None = None,
     ) -> None:
         self._notifier = notifier
         self._pipelines = pipeline_store
@@ -137,7 +139,7 @@ class RunPipelineTool:
         self._teams = teams_store
         self._config = config
         self._registry = tool_registry
-        self._job_registry = job_registry
+        self._job_registry: JobRegistry | None = job_registry
         self._agent: Any = None
 
     def set_agent(self, agent: Any) -> None:
@@ -185,8 +187,6 @@ class RunPipelineTool:
         log.info("run_pipeline_started", pipeline_id=pipeline_id, workspace_id=workspace_id)
 
         if self._job_registry is not None:
-            from src.jobs import JobRegistry
-            assert isinstance(self._job_registry, JobRegistry)
             self._job_registry.start(
                 pipeline_id,
                 job_type="pipeline",
@@ -203,8 +203,6 @@ class RunPipelineTool:
             )
         )
         if self._job_registry is not None:
-            from src.jobs import JobRegistry
-            assert isinstance(self._job_registry, JobRegistry)
             self._job_registry.set_task(pipeline_id, bg_task)
 
         return (
@@ -231,14 +229,10 @@ class RunPipelineTool:
 
         def _update_stage(stage: str) -> None:
             if self._job_registry is not None:
-                from src.jobs import JobRegistry
-                assert isinstance(self._job_registry, JobRegistry)
                 self._job_registry.update_stage(pipeline_id, stage.upper())
 
         def _finish_job(success: bool, error: str | None = None) -> None:
             if self._job_registry is not None:
-                from src.jobs import JobRegistry
-                assert isinstance(self._job_registry, JobRegistry)
                 self._job_registry.finish(pipeline_id, success=success, error=error)
 
         try:
@@ -471,9 +465,9 @@ class RunPipelineTool:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=_CCC_TIMEOUT
             )
-        except asyncio.TimeoutError:
+        except TimeoutError as exc:
             proc.kill()
-            raise RuntimeError(f"IMPLEMENT stage timed out after {_CCC_TIMEOUT // 60} minutes.")
+            raise RuntimeError(f"IMPLEMENT stage timed out after {_CCC_TIMEOUT // 60} minutes.") from exc
 
         if proc.returncode != 0:
             err = (stderr.decode(errors="replace") or stdout.decode(errors="replace"))[:800]

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import anthropic
 import structlog
+from anthropic.types import TextBlock
 
 from .store import MemoryStore
 
@@ -108,7 +109,8 @@ class MemoryCompactor:
             max_tokens=512,
             messages=[{"role": "user", "content": _EXTRACT_PROMPT.format(transcript=transcript)}],
         )
-        raw = response.content[0].text if response.content else ""
+        first = response.content[0] if response.content else None
+        raw = first.text if isinstance(first, TextBlock) else ""
         new_facts = [line.strip() for line in raw.splitlines() if line.strip()]
 
         if not new_facts:
@@ -133,7 +135,8 @@ class MemoryCompactor:
                     ),
                 }],
             )
-            merged_raw = merge_response.content[0].text if merge_response.content else ""
+            first_merged = merge_response.content[0] if merge_response.content else None
+            merged_raw = first_merged.text if isinstance(first_merged, TextBlock) else ""
             merged_facts = [line.strip() for line in merged_raw.splitlines() if line.strip()]
         else:
             merged_facts = new_facts
@@ -180,7 +183,8 @@ class MemoryCompactor:
                 "content": _CLEAN_PROMPT.format(existing_facts=existing_facts),
             }],
         )
-        cleaned_raw = response.content[0].text if response.content else ""
+        first_clean = response.content[0] if response.content else None
+        cleaned_raw = first_clean.text if isinstance(first_clean, TextBlock) else ""
         cleaned = [line.strip() for line in cleaned_raw.splitlines() if line.strip()]
 
         if not cleaned:

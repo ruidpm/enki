@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.agent import Agent
+from src.audit.db import AuditDB
 from src.config import Settings
-from src.agent import Agent, ModelTier
 from src.guardrails import GuardrailChain
 from src.guardrails.allowlist import AllowlistHook
 from src.guardrails.cost_guard import CostGuardHook
 from src.guardrails.loop_detector import LoopDetectorHook
 from src.guardrails.rate_limiter import RateLimiterHook
-from src.audit.db import AuditDB
 from src.memory.store import MemoryStore
 
 

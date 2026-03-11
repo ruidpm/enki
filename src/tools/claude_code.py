@@ -272,7 +272,7 @@ class RunClaudeCodeTool:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=_TIMEOUT_SECONDS
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             log.error("claude_code_timeout", job_id=job_id)
             if claude_md_path and claude_md_path.exists():
@@ -328,7 +328,7 @@ class RunClaudeCodeTool:
                     if violations:
                         log.error("claude_code_protected_path_violation", job_id=job_id, files=violations)
                         diff_msg = (
-                            f"\n\n⚠️ PROTECTED PATH VIOLATION — these files should NOT have been modified:\n"
+                            "\n\n⚠️ PROTECTED PATH VIOLATION — these files should NOT have been modified:\n"
                             + "\n".join(f"  • {v}" for v in violations)
                             + f"\n\nFull diff:\n{diff_text[:2000]}"
                         )

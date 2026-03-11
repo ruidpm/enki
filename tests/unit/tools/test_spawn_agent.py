@@ -4,10 +4,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from anthropic.types import TextBlock, ToolUseBlock
 
-from src.tools.spawn_agent import SpawnAgentTool
 from src.sub_agent import SubAgentRunner
-
+from src.tools.spawn_agent import SpawnAgentTool
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -129,8 +129,7 @@ async def test_concurrent_limit_blocks_excess_spawns(
 
 @pytest.mark.asyncio
 async def test_runner_returns_text_on_end_turn(config: MagicMock, mock_tool: MagicMock) -> None:
-    text_block = MagicMock()
-    text_block.type = "text"
+    text_block = MagicMock(spec=TextBlock)
     text_block.text = "Here is the answer."
     response = MagicMock()
     response.stop_reason = "end_turn"
@@ -154,8 +153,7 @@ async def test_runner_returns_text_on_end_turn(config: MagicMock, mock_tool: Mag
 
 @pytest.mark.asyncio
 async def test_runner_calls_tool_and_continues(config: MagicMock, mock_tool: MagicMock) -> None:
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
+    tool_block = MagicMock(spec=ToolUseBlock)
     tool_block.name = "web_search"
     tool_block.id = "tu_001"
     tool_block.input = {"query": "latest news"}
@@ -166,8 +164,7 @@ async def test_runner_calls_tool_and_continues(config: MagicMock, mock_tool: Mag
     tool_use_response.usage.input_tokens = 20
     tool_use_response.usage.output_tokens = 10
 
-    text_block = MagicMock()
-    text_block.type = "text"
+    text_block = MagicMock(spec=TextBlock)
     text_block.text = "Based on search: nothing new."
 
     end_response = MagicMock()
@@ -193,8 +190,7 @@ async def test_runner_calls_tool_and_continues(config: MagicMock, mock_tool: Mag
 
 @pytest.mark.asyncio
 async def test_runner_handles_unknown_tool_gracefully(config: MagicMock) -> None:
-    tool_block = MagicMock()
-    tool_block.type = "tool_use"
+    tool_block = MagicMock(spec=ToolUseBlock)
     tool_block.name = "nonexistent"
     tool_block.id = "tu_002"
     tool_block.input = {}

@@ -193,9 +193,9 @@ class Agent:
             response = await self._client.messages.create(
                 model=model,
                 max_tokens=4096,
-                system=system_block,
-                tools=tools,
-                messages=self._conversation,
+                system=system_block,  # type: ignore[arg-type]
+                tools=tools,  # type: ignore[arg-type]
+                messages=self._conversation,  # type: ignore[arg-type]
             )
 
             # Track cost
@@ -230,7 +230,7 @@ class Agent:
                     continue
 
                 tool_name: str = block.name
-                params: dict[str, Any] = block.input  # type: ignore[assignment]
+                params: dict[str, Any] = block.input
 
                 # Run guardrail chain
                 allow, reason = await self._guardrails.run(tool_name, params)

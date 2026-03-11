@@ -8,9 +8,9 @@ import pytest
 
 from src.guardrails import GuardrailChain
 from src.guardrails.allowlist import AllowlistHook
-from src.guardrails.rate_limiter import RateLimiterHook
-from src.guardrails.loop_detector import LoopDetectorHook
 from src.guardrails.confirmation_gate import ConfirmationGateHook
+from src.guardrails.loop_detector import LoopDetectorHook
+from src.guardrails.rate_limiter import RateLimiterHook
 
 
 @pytest.fixture

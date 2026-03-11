@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -83,7 +83,9 @@ async def test_execute_returns_immediately_with_job_id(tool: RunClaudeCodeTool) 
 @pytest.mark.asyncio
 async def test_background_sends_result_on_success(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     claude_proc = _make_proc(stdout=b"Created file src/tools/hello.py")
-    diff_proc = _make_proc(stdout=b"diff --git a/src/tools/hello.py b/src/tools/hello.py\n+++ b/src/tools/hello.py\n+def hello(): pass")
+    diff_proc = _make_proc(
+        stdout=b"diff --git a/src/tools/hello.py b/src/tools/hello.py\n+++ b/src/tools/hello.py\n+def hello(): pass"
+    )
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", _mock_spawn_seq(claude_proc, diff_proc)):
         await tool._run_background("abc12345", "add hello tool")
 

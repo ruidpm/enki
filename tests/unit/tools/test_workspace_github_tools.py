@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.workspaces.store import WorkspaceStore
 from src.tools.github_tools import (
-    GitStatusTool,
-    GitDiffTool,
-    GitCommitTool,
-    GitPushBranchTool,
     CreatePRTool,
+    GitCommitTool,
+    GitDiffTool,
+    GitPushBranchTool,
+    GitStatusTool,
 )
+from src.workspaces.store import WorkspaceStore
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ async def test_git_status_no_workspace(ws_store: WorkspaceStore) -> None:
     with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_make_proc(stdout="M src/foo.py")) as mock:
         result = await tool.execute()
     assert "foo.py" in result
-    args = mock.call_args[0]
+    mock.call_args[0]
     # cwd should NOT be set (assistant repo)
     assert mock.call_args.kwargs.get("cwd") is None
 
@@ -125,7 +125,10 @@ async def test_git_push_branch_blocks_main_regardless_of_workspace(ws_store: Wor
 @pytest.mark.asyncio
 async def test_create_pr_with_workspace(ws_store: WorkspaceStore, tmp_path: Path) -> None:
     tool = CreatePRTool(workspace_store=ws_store)
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_make_proc(stdout="https://github.com/u/r/pull/1")) as mock:
+    with patch(
+        "src.tools.github_tools.asyncio.create_subprocess_exec",
+        return_value=_make_proc(stdout="https://github.com/u/r/pull/1"),
+    ) as mock:
         result = await tool.execute(workspace_id="ws1", title="Add login", branch="feat/login")
     assert "github.com" in result
     # gh should be called with cwd=workspace path
@@ -135,7 +138,10 @@ async def test_create_pr_with_workspace(ws_store: WorkspaceStore, tmp_path: Path
 @pytest.mark.asyncio
 async def test_create_pr_no_workspace_uses_assistant_repo() -> None:
     tool = CreatePRTool()
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_make_proc(stdout="https://github.com/u/r/pull/2")) as mock:
+    with patch(
+        "src.tools.github_tools.asyncio.create_subprocess_exec",
+        return_value=_make_proc(stdout="https://github.com/u/r/pull/2"),
+    ) as mock:
         result = await tool.execute(title="Fix bug", branch="fix/bug")
     assert "github.com" in result
     assert mock.call_args.kwargs.get("cwd") is None
