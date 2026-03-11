@@ -23,6 +23,9 @@ What belongs here:
 - Ongoing commitments or goals ("User is house-hunting in Lisbon", "User is building a personal assistant project")
 - Important life context ("User works as a software engineer", "User lives in Porto")
 - Recurring patterns Enki should remember ("User checks tasks every morning")
+- Personal relationships and people: family members, partners, pets — always include name and role \
+(e.g. "User's wife is called Ana", "User has a cat named Mochi")
+- Personal attributes: city, age, nationality, health conditions relevant to daily planning
 
 What does NOT belong:
 - One-off questions or tasks ("User asked about weather today")
@@ -47,6 +50,7 @@ Rules:
 - Keep only durable facts about the user (preferences, commitments, life context, patterns)
 - Remove duplicates — if a new fact updates an old one, keep only the newer version
 - Remove facts that are no longer relevant or are clearly outdated
+- NEVER remove facts about named people (family members, partner, pets) — these are permanent
 - Maximum 100 facts total
 - Output one fact per line, no bullets or numbering, no headers
 
@@ -66,6 +70,7 @@ Rules:
 - Merge closely related facts into one (e.g. two facts about the same preference)
 - Remove duplicates
 - Be conservative — when in doubt, keep the fact
+- NEVER remove facts about named people (family members, partner, pets) — these are permanent
 - Maximum 100 facts total
 - Output one fact per line, no bullets or numbering, no headers
 

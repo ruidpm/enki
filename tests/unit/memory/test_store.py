@@ -151,11 +151,38 @@ def test_build_context_includes_today_log(tmp_path: Path) -> None:
 
 
 def test_build_context_skips_fts_when_facts_path_set(tmp_path: Path) -> None:
-    """When facts_path is configured, FTS results should not be included."""
+    """Today's turns must not appear in historical FTS section (already covered by today's log)."""
     facts_path = tmp_path / "facts.md"
     facts_path.write_text("- User fact\n")
     s = MemoryStore(tmp_path / "mem.db", facts_path=facts_path)
+    # Insert a turn for TODAY — should not show up in historical FTS
     s.append_turn("sess1", "user", "mortgage rates are rising")
     ctx = s.build_context("mortgage", "sess1")
-    # FTS section header should not appear when facts_path is set
+    # Today's turn should not create a historical section
     assert "Relevant past context" not in ctx
+
+
+def test_build_context_includes_historical_fts_results(tmp_path: Path) -> None:
+    """Previous-day turns matching the query must appear in ## Relevant past context."""
+    facts_path = tmp_path / "facts.md"
+    facts_path.write_text("- User fact\n")
+    s = MemoryStore(tmp_path / "mem.db", facts_path=facts_path)
+    # Insert a turn with an explicit past timestamp (yesterday)
+    s.append_turn("sess_old", "user", "mortgage interest rates", timestamp="2026-03-10T10:00:00+00:00")
+    ctx = s.build_context("mortgage", "sess_current")
+    assert "Relevant past context" in ctx
+    assert "mortgage" in ctx
+
+
+def test_build_context_historical_truncates_content(tmp_path: Path) -> None:
+    """Historical FTS entries are truncated to 200 chars each to keep context tight."""
+    facts_path = tmp_path / "facts.md"
+    facts_path.write_text("- User fact\n")
+    s = MemoryStore(tmp_path / "mem.db", facts_path=facts_path)
+    long_content = "mortgage " + "x" * 300
+    s.append_turn("sess_old", "user", long_content, timestamp="2026-03-10T10:00:00+00:00")
+    ctx = s.build_context("mortgage", "sess_current")
+    # Each historical entry should be limited; total context should not balloon
+    for line in ctx.splitlines():
+        if "mortgage" in line and line.startswith("[2026"):
+            assert len(line) <= 230  # timestamp prefix + 200 chars content

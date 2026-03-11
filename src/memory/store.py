@@ -180,7 +180,7 @@ class MemoryStore:
         parts: list[str] = []
 
         if self._facts_path is not None:
-            # New path: facts.md + daily log tail
+            # New path: facts.md + daily log tail + historical FTS
             if self._facts_path.exists():
                 facts_text = self._facts_path.read_text().strip()
                 if facts_text:
@@ -189,6 +189,17 @@ class MemoryStore:
             log_tail = self.get_today_log_tail(n=50)
             if log_tail:
                 parts.append(f"## Today's conversation log\n{log_tail}")
+
+            # Historical FTS: previous days only (today is already covered above)
+            results = self.search_fts(query, limit=3)
+            today_str = date.today().isoformat()
+            historical = [r for r in results if not r["timestamp"].startswith(today_str)]
+            if historical:
+                hits = "\n".join(
+                    f"[{r['timestamp'][:10]}]: {r['content'][:200]}"
+                    for r in historical
+                )
+                parts.append(f"## Relevant past context\n{hits}")
         else:
             # Legacy path: SQLite facts + FTS
             facts = self.get_facts(limit=20)

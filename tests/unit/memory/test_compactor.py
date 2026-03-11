@@ -1,4 +1,4 @@
-"""Tests for MemoryCompactor — merge/dedup flow."""
+"""Tests for MemoryCompactor — merge/dedup flow and prompt quality."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from anthropic.types import TextBlock
 
-from src.memory.compactor import MemoryCompactor
+from src.memory.compactor import (
+    _CLEAN_PROMPT,
+    _EXTRACT_PROMPT,
+    _MERGE_PROMPT,
+    MemoryCompactor,
+)
 from src.memory.store import MemoryStore
 
 
@@ -145,3 +150,37 @@ async def test_facts_md_format(
     await compactor.compact_session("sess5")
     lines = [ln for ln in facts_path.read_text().splitlines() if ln.strip()]
     assert all(line.startswith("- ") for line in lines)
+
+
+# ---------------------------------------------------------------------------
+# Prompt quality tests — personal facts must be protected
+# ---------------------------------------------------------------------------
+
+def test_extract_prompt_mentions_personal_relationships() -> None:
+    """_EXTRACT_PROMPT must instruct extraction of personal relationships and names."""
+    prompt_lower = _EXTRACT_PROMPT.lower()
+    assert "relationship" in prompt_lower or "partner" in prompt_lower or "family" in prompt_lower
+    assert "pet" in prompt_lower or "name" in prompt_lower
+
+
+def test_extract_prompt_mentions_personal_attributes() -> None:
+    """_EXTRACT_PROMPT must list personal attributes like city/age as extractable."""
+    prompt_lower = _EXTRACT_PROMPT.lower()
+    assert "city" in prompt_lower or "age" in prompt_lower or "nationality" in prompt_lower
+
+
+def test_merge_prompt_has_never_remove_rule_for_named_people() -> None:
+    """_MERGE_PROMPT must contain a hard rule against removing facts about named people."""
+    prompt_upper = _MERGE_PROMPT.upper()
+    assert "NEVER" in prompt_upper
+    # Should mention named people / family / partner / pets
+    prompt_lower = _MERGE_PROMPT.lower()
+    assert any(kw in prompt_lower for kw in ["family", "partner", "pet", "named people", "named"])
+
+
+def test_clean_prompt_has_never_remove_rule_for_named_people() -> None:
+    """_CLEAN_PROMPT must contain a hard rule against removing facts about named people."""
+    prompt_upper = _CLEAN_PROMPT.upper()
+    assert "NEVER" in prompt_upper
+    prompt_lower = _CLEAN_PROMPT.lower()
+    assert any(kw in prompt_lower for kw in ["family", "partner", "pet", "named people", "named"])

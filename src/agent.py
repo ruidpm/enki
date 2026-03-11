@@ -1,6 +1,7 @@
 """Core agent loop — Claude API + tool dispatch + model routing."""
 from __future__ import annotations
 
+import asyncio
 import pathlib
 import re
 import time
@@ -93,6 +94,7 @@ class Agent:
         self._session_id = session_id or str(uuid.uuid4())
         self._conversation: list[dict[str, Any]] = []
         self._last_activity: float = time.monotonic()
+        self._run_lock = asyncio.Lock()
 
         loop_detector.set_session(self._session_id)
         log.info("agent_init", session_id=self._session_id)
@@ -137,6 +139,11 @@ class Agent:
         user_message can be a plain string or a list of content blocks
         (e.g. image + text for photo messages).
         """
+        async with self._run_lock:
+            return await self._run_turn_locked(user_message)
+
+    async def _run_turn_locked(self, user_message: str | list[dict[str, Any]]) -> str:
+        """Inner turn implementation — must only be called while _run_lock is held."""
         # Auto-reset session after configured idle period
         idle_hours = (time.monotonic() - self._last_activity) / 3600
         if idle_hours >= self._config.session_timeout_hours:
@@ -176,6 +183,19 @@ class Agent:
         tier = classify_complexity(plain_text)
         model = self._model_for_tier(tier)
         log.info("model_selected", tier=tier, model=model)
+
+        # Heal any orphaned tool_use block left by a previous failed turn
+        if self._conversation:
+            last = self._conversation[-1]
+            if last.get("role") == "assistant":
+                content = last.get("content", [])
+                has_orphan = any(
+                    getattr(b, "type", None) == "tool_use"
+                    for b in (content if isinstance(content, list) else [])
+                )
+                if has_orphan:
+                    self._conversation.pop()
+                    log.warning("healed_orphaned_tool_use")
 
         # Add user message to conversation history
         self._conversation.append({"role": "user", "content": user_message})
@@ -225,56 +245,72 @@ class Agent:
             self._conversation.append({"role": "assistant", "content": response.content})
             tool_results: list[dict[str, Any]] = []
 
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
+            try:
+                for block in response.content:
+                    if block.type != "tool_use":
+                        continue
 
-                tool_name: str = block.name
-                params: dict[str, Any] = block.input
+                    tool_name: str = block.name
+                    params: dict[str, Any] = block.input
 
-                # Run guardrail chain
-                allow, reason = await self._guardrails.run(tool_name, params)
+                    # Run guardrail chain
+                    allow, reason = await self._guardrails.run(tool_name, params)
 
-                if not allow:
-                    # Audit every guardrail block as a Tier1 security event
-                    await self._audit.log_tier1(
-                        Tier1Event.GUARDRAIL_BLOCK, self._session_id,
-                        {"tool": tool_name, "reason": reason},
+                    if not allow:
+                        # Audit every guardrail block as a Tier1 security event
+                        await self._audit.log_tier1(
+                            Tier1Event.GUARDRAIL_BLOCK, self._session_id,
+                            {"tool": tool_name, "reason": reason},
+                        )
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": f"[BLOCKED by guardrail: {reason}]",
+                            "is_error": True,
+                        })
+                        continue
+
+                    # Safe tool lookup — guardrails verified it's registered, but guard anyway
+                    tool = self._tools.get(tool_name)
+                    if tool is None:
+                        log.error("tool_not_found_post_guardrail", tool=tool_name)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": f"[Internal error: tool '{tool_name}' not found]",
+                            "is_error": True,
+                        })
+                        continue
+
+                    try:
+                        result = await tool.execute(**params)
+                    except Exception as exc:
+                        result = f"[Tool error: {exc}]"
+                        log.error("tool_error", tool=tool_name, error=str(exc))
+
+                    await self._audit.log_tier2(
+                        Tier2Event.TOOL_CALLED, self._session_id, {"tool": tool_name}
                     )
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": f"[BLOCKED by guardrail: {reason}]",
-                        "is_error": True,
+                        "content": result,
                     })
-                    continue
 
-                # Safe tool lookup — guardrails verified it's registered, but guard anyway
-                tool = self._tools.get(tool_name)
-                if tool is None:
-                    log.error("tool_not_found_post_guardrail", tool=tool_name)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": f"[Internal error: tool '{tool_name}' not found]",
-                        "is_error": True,
-                    })
-                    continue
-
-                try:
-                    result = await tool.execute(**params)
-                except Exception as exc:
-                    result = f"[Tool error: {exc}]"
-                    log.error("tool_error", tool=tool_name, error=str(exc))
-
-                await self._audit.log_tier2(
-                    Tier2Event.TOOL_CALLED, self._session_id, {"tool": tool_name}
-                )
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result,
-                })
+            except Exception as exc:
+                log.error("tool_loop_error", error=str(exc))
+                # Synthesise error results for any tool_use blocks that didn't get one
+                collected_ids = {r["tool_use_id"] for r in tool_results}
+                for block in response.content:
+                    if getattr(block, "type", None) == "tool_use":
+                        block_id = getattr(block, "id", None)
+                        if block_id and block_id not in collected_ids:
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block_id,
+                                "content": f"[interrupted: {exc}]",
+                                "is_error": True,
+                            })
 
             self._conversation.append({"role": "user", "content": tool_results})
             self._cost_guard.record_autonomous_turn()
