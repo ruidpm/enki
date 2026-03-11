@@ -34,3 +34,4 @@ memory/facts.md
 *.key
 credentials.json
 token.json
+plans/

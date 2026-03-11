@@ -16,6 +16,7 @@ REQUIRES_CONFIRM: frozenset[str] = frozenset({
     "remove_tool",
     "manage_team",
     "manage_schedule",
+    "manage_workspace",
 })
 
 

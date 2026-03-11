@@ -7,6 +7,7 @@ When omitted, operations run in the assistant's own repository (CWD).
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -40,7 +41,32 @@ def _resolve_cwd(workspace_id: str | None, workspace_store: object) -> str | tup
     ws = workspace_store.get(workspace_id)
     if ws is None:
         return None, f"[ERROR] Workspace '{workspace_id}' not found. Use list_workspaces."
-    return ws["local_path"]  # type: ignore[return-value]
+    local_path: str = ws["local_path"]
+    if not Path(local_path).exists():
+        return None, f"[ERROR] Workspace path '{local_path}' does not exist on disk."
+    return local_path  # type: ignore[return-value]
+
+
+def _check_trust(workspace_id: str | None, workspace_store: object, required: int) -> str | None:
+    """Return error string if workspace trust too low, None if OK or no workspace specified."""
+    if not workspace_id:
+        return None  # assistant repo — no trust restriction
+    if workspace_store is None:
+        return None
+    from src.workspaces.store import WorkspaceStore, TrustLevel
+    assert isinstance(workspace_store, WorkspaceStore)
+    ws = workspace_store.get(workspace_id)
+    if ws is None:
+        return None  # _resolve_cwd will surface the not-found error
+    trust: int = ws.get("trust_level", TrustLevel.PROPOSE)
+    if trust < required:
+        _names = {0: "read_only", 1: "propose", 2: "auto_commit", 3: "auto_push", 4: "trusted"}
+        return (
+            f"[BLOCKED] Workspace trust level '{_names.get(trust, trust)}' is too low for this "
+            f"operation (requires '{_names.get(required, required)}'). "
+            f"Use manage_workspace set_trust to elevate."
+        )
+    return None
 
 
 _WORKSPACE_ID_SCHEMA: dict[str, Any] = {
@@ -116,6 +142,9 @@ class GitCommitTool:
         self._ws_store = workspace_store
 
     async def execute(self, **kwargs: Any) -> str:
+        from src.workspaces.store import TrustLevel
+        if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
+            return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
         if isinstance(cwd, tuple):
             return cwd[1]
@@ -150,6 +179,9 @@ class GitPushBranchTool:
         branch: str = kwargs["branch"]
         if branch in _PROTECTED_BRANCHES:
             return f"[BLOCKED] Cannot push to protected branch '{branch}'."
+        from src.workspaces.store import TrustLevel
+        if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
+            return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
         if isinstance(cwd, tuple):
             return cwd[1]
@@ -183,6 +215,9 @@ class CreatePRTool:
         branch = kwargs["branch"]
         if branch in _PROTECTED_BRANCHES:
             return f"[BLOCKED] Cannot open PR from protected branch '{branch}'."
+        from src.workspaces.store import TrustLevel
+        if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
+            return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
         if isinstance(cwd, tuple):
             return cwd[1]

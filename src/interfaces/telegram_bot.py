@@ -65,9 +65,11 @@ class TelegramBot:
         self._app.add_error_handler(self._on_error)  # type: ignore[arg-type]
 
     def _authorized(self, update: Update) -> bool:
+        chat = update.effective_chat
         return (
-            update.effective_chat is not None
-            and update.effective_chat.id == self._allowed_chat_id
+            chat is not None
+            and chat.type == "private"
+            and chat.id == self._allowed_chat_id
         )
 
     def _authorized_chat(self, chat_id: int) -> bool:

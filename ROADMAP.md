@@ -53,7 +53,7 @@
 ### ~~1. Telegram end-to-end verification~~ ✓ DONE
 - Voice, photo, text, inline confirmations, /newsession, /cost — all verified on mobile
 
-### 1. Fix calendar integration  ← NEXT
+### 1. Fix calendar integration
 - gcalcli OAuth token on macOS lands in `~/Library/Application Support/gcalcli/oauth`, not `~/.config/gcalcli/`
 - Container mounts `~/.config/gcalcli` but the token isn't there after host auth
 - Fix: either symlink/copy on host, or rethink auth flow so token lands in the mounted path

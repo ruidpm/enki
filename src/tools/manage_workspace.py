@@ -207,6 +207,8 @@ class ManageWorkspaceTool:
             return "[ERROR] git_remote is required for clone."
         if not local_path:
             return "[ERROR] local_path (clone destination) is required."
+        if not (git_remote.startswith("https://") or git_remote.startswith("http://") or git_remote.startswith("git@")):
+            return "[ERROR] Clone URL must start with https://, http://, or git@ (SSH)."
 
         proc = await asyncio.create_subprocess_exec(
             "git", "clone", git_remote, local_path,
@@ -227,7 +229,7 @@ class ManageWorkspaceTool:
             git_remote=git_remote,
             language=kwargs.get("language"),
             description=kwargs.get("description"),
-            trust_level=kwargs.get("trust_level", TrustLevel.PROPOSE),
+            trust_level=min(kwargs.get("trust_level", TrustLevel.PROPOSE), TrustLevel.PROPOSE),
             github_token_env=kwargs.get("github_token_env"),
         )
         log.info("workspace_cloned", workspace_id=workspace_id, git_remote=git_remote)

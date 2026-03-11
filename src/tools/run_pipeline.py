@@ -151,6 +151,14 @@ class RunPipelineTool:
         if workspace is None:
             return f"[ERROR] Workspace '{workspace_id}' not found. Use list_workspaces."
 
+        from src.workspaces.store import TrustLevel
+        if workspace.get("trust_level", TrustLevel.PROPOSE) < TrustLevel.PROPOSE:
+            return (
+                f"[BLOCKED] Workspace '{workspace_id}' is READ_ONLY (trust_level=0). "
+                f"Pipeline requires at least PROPOSE trust. "
+                f"Use manage_workspace set_trust to elevate."
+            )
+
         confirmed = await self._notifier.ask_single_confirm(
             reason=f"Run pipeline: {workspace['name']}",
             changes_summary=task[:400],
@@ -229,6 +237,21 @@ class RunPipelineTool:
                         pipeline_id, task, workspace_path, language, artifacts
                     )
                 elif stage == PipelineStage.PR:
+                    pr_confirmed = await self._notifier.ask_single_confirm(
+                        reason=f"[Pipeline {pipeline_id}] Open pull request?",
+                        changes_summary=(
+                            f"Task: {task[:200]}\n"
+                            f"IMPLEMENT complete. Ready to push branch and open PR."
+                        ),
+                    )
+                    if not pr_confirmed:
+                        await self._notifier.send(
+                            f"[Pipeline {pipeline_id}] PR skipped — code is on the workspace. "
+                            f"Run create_pr manually when ready."
+                        )
+                        self._pipelines.set_status(pipeline_id, PipelineStatus.COMPLETED)
+                        _finish_job(success=True)
+                        return
                     result = await self._run_pr(
                         pipeline_id, task, workspace_path, artifacts
                     )
