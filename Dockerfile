@@ -34,6 +34,8 @@ RUN useradd -m -u 1000 enki \
 ENV PYTHONPATH=/app
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY .claude/ ./.claude/
 COPY main.py soul.md entrypoint.sh ./
 RUN chmod +x entrypoint.sh && chown -R enki:enki /app
 

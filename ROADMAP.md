@@ -1,6 +1,6 @@
 # Enki — Roadmap
 
-## Status: voice/photo + prompt caching + memory cleanup live (2026-03-10)
+## Status: Docker hardening + open-source release (2026-03-11)
 
 ---
 
@@ -14,7 +14,7 @@
 | Audit trail | Tier1 (chain-hashed, forever) / Tier2 (30-day metadata) / Tier3 (opt-in debug) |
 | Memory store | SQLite + FTS5 + daily markdown logs + facts.md; compactor wired in CLI + Telegram |
 | Agent loop | model routing (haiku/sonnet/opus), tool dispatch, agentic loop |
-| Tools registered | tasks, web_search, notes, calendar_read, email_read (optional), git_status/diff/commit/push_branch/create_pr, propose_tool, request_restart, run_claude_code, spawn_agent |
+| Tools registered | tasks, web_search, notes, calendar_read, email_read (optional), git_status/diff/commit/push_branch/create_pr, propose_tool, request_restart, run_claude_code, spawn_agent, spawn_team, team_report, manage_team, manage_schedule, manage_pipeline, run_pipeline |
 | soul.md | injected as system prompt |
 | CLI interface | `python main.py chat` — interactive REPL |
 | Telegram bot | polling, inline keyboard confirmations, compactor at shutdown |
@@ -36,6 +36,12 @@
 | **Memory cleanup** | MemoryCompactor.clean_facts() — weekly haiku prune of facts.md, auto-triggered at startup |
 | **manage_schedule update** | Enki can edit existing job prompts/cron; graceful degradation without live scheduler |
 | **Guardrail limits raised** | 5M tokens/session, $50/day, $300/month, 1000 LLM calls |
+| **Docker hardening** | Multi-stage build, non-root user (UID 1000), `.claude/` + `scripts/` in image, `--no-cache` removed, whisper named volume |
+| **PID lock self-detection fix** | Container restart recycles PID → false "already running" → fixed with `existing_pid != os.getpid()` guard |
+| **Restart tool** | Removed docker CLI dependency; uses `SIGTERM` self-signal + Docker `restart: unless-stopped` |
+| **Current date injection** | `date.today()` injected into system prompt at turn time; Enki no longer reports August 2025 |
+| **gcalcli `--days` flag** | Flag doesn't exist in gcalcli; replaced with positional date args (`start end`) |
+| **Open-source release** | Repo published at github.com/ruidpm/enki; CLAUDE.md scrubbed of personal paths |
 
 ---
 
@@ -47,7 +53,28 @@
 ### ~~1. Telegram end-to-end verification~~ ✓ DONE
 - Voice, photo, text, inline confirmations, /newsession, /cost — all verified on mobile
 
-### 1. remove_tool capability  ← NEXT
+### 1. Fix calendar integration  ← NEXT
+- gcalcli OAuth token on macOS lands in `~/Library/Application Support/gcalcli/oauth`, not `~/.config/gcalcli/`
+- Container mounts `~/.config/gcalcli` but the token isn't there after host auth
+- Fix: either symlink/copy on host, or rethink auth flow so token lands in the mounted path
+
+### 2. Fix cost tracking (session + monthly inaccurate)
+- Session token count and monthly USD spend display incorrect values
+- Audit and fix token accumulation logic in agent loop and cost_guard
+
+### 3. Refine git process + repo cloning with trust-level gating
+- Allow Enki to clone external repos (not just operate on pre-registered workspaces)
+- User gating per trust level: LOW = read-only clone, MEDIUM = clone + branch, HIGH = full access including PR
+- Guardrails needed: scope check on clone URLs, path traversal on clone target, confirmation gate
+- Enki must be able to clone its own repo (github.com/ruidpm/enki) and open PRs on it
+- Structural fix: git tools must require `workspace_id` and resolve CWD from WorkspaceStore
+
+### 4. Pipelines end-to-end
+- RESEARCH→SCOPE→PLAN→IMPLEMENT→TEST→REVIEW→PR pipeline not verified end-to-end
+- Known issue: `git_diff`/`git_status`/`run_claude_code` default to process CWD instead of workspace path
+- Fix workspace CWD resolution first (item 3), then run full pipeline smoke test
+
+### 5. remove_tool capability
 - Agent can't remove a tool it proposed — needs `remove_tool(name)` that unregisters + deletes file
 - Needs user confirmation (in REQUIRES_CONFIRM)
 - Must refuse IMMUTABLE_CORE tools
@@ -96,9 +123,6 @@
 | `manage_pipeline(abort)` didn't kill background task | `RunPipelineTool` stores asyncio Task in JobRegistry after `create_task`; `CancelledError` caught in `_run_background` |
 | Pipeline `ask_double_confirm` said "Restart requested" | Fixed copy-paste — now uses `reason` as title |
 
-## Known bugs fixed
-| Bug | Fix |
-|---|---|
 | `register()` blocked initial registration of IMMUTABLE_CORE tools | Only block overwrite if already in registry |
 | FTS5 syntax error on raw user input with `?`, `:`, `AND/OR/NOT` | `_sanitize_fts_query()` strips special chars and operators |
 | Dockerfile used uv — broke inside container | Switched to `pip install -e "."` directly |
