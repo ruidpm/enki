@@ -119,6 +119,8 @@ class RunPipelineTool:
         "required": ["workspace_id", "task"],
     }
 
+    _GIST_THRESHOLD = 500  # chars — above this, create a gist instead of dumping raw text
+
     def __init__(
         self,
         notifier: Notifier,
@@ -136,6 +138,11 @@ class RunPipelineTool:
         self._config = config
         self._registry = tool_registry
         self._job_registry = job_registry
+        self._agent: Any = None
+
+    def set_agent(self, agent: Any) -> None:
+        """Wire in the main agent for summarization. Called after Agent is built."""
+        self._agent = agent
 
     async def execute(self, **kwargs: Any) -> str:
         workspace_id: str = kwargs.get("workspace_id", "").strip()
@@ -275,10 +282,7 @@ class RunPipelineTool:
                     PipelineStage.next(stage) or stage,
                 )
 
-                await self._notifier.send(
-                    f"[Pipeline {pipeline_id}] {stage.upper()} complete.\n\n"
-                    f"{result[:600]}"
-                )
+                await self._send_stage_output(pipeline_id, stage, result)
 
         except asyncio.CancelledError:
             log.info("run_pipeline_cancelled", pipeline_id=pipeline_id)
@@ -303,6 +307,52 @@ class RunPipelineTool:
             f"PR: {pr_url}\n"
             f"Review and merge when ready."
         )
+
+    async def _create_gist(self, content: str, description: str) -> str | None:
+        """Create a secret GitHub gist via gh CLI. Returns URL or None on failure."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "gh", "gist", "create", "--secret",
+                "--desc", description,
+                "--filename", "output.md",
+                "-",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(input=content.encode()), timeout=30
+            )
+            if proc.returncode == 0:
+                return stdout.decode().strip()
+        except Exception as exc:
+            log.warning("pipeline_gist_create_failed", error=str(exc))
+        return None
+
+    async def _send_stage_output(self, pipeline_id: str, stage: str, result: str) -> None:
+        """Send stage output to notifier. Long output → secret gist + Enki summary."""
+        prefix = f"[Pipeline {pipeline_id}] {stage.upper()} complete."
+        if len(result) <= self._GIST_THRESHOLD or self._agent is None:
+            await self._notifier.send(f"{prefix}\n\n{result[:600]}")
+            return
+
+        gist_url = await self._create_gist(result, f"Pipeline {pipeline_id} {stage} output")
+        summary_prompt = (
+            f"Summarise the following pipeline stage output in 2-3 bullet points "
+            f"for a Telegram message. Stage: {stage.upper()}. Be concise.\n\n{result[:4000]}"
+        )
+        try:
+            summary, _ = await self._agent.run_turn(summary_prompt)
+        except Exception as exc:
+            log.warning("pipeline_summary_failed", stage=stage, error=str(exc))
+            summary = result[:400]
+
+        if gist_url:
+            await self._notifier.send(f"{prefix}\n{summary}\n\nFull report: {gist_url}")
+        else:
+            await self._notifier.send(
+                f"{prefix}\n{summary}\n\n(full output too long; gist creation failed)"
+            )
 
     async def _run_llm_stage(
         self,

@@ -217,12 +217,13 @@ def _build_agent(notifier: object = None) -> BuildResult:
     workspace_store = WorkspaceStore(workspace_db_path)
     register(ListWorkspacesTool(store=workspace_store, workspaces_base_dir=config.workspaces_base_dir))
     register(ManageWorkspaceTool(store=workspace_store, workspaces_base_dir=config.workspaces_base_dir))
-    register(RunClaudeCodeTool(
+    _run_claude_code_tool = RunClaudeCodeTool(
         notifier=_notifier_instance,
         project_dir=Path(__file__).parent,
         workspace_store=workspace_store,
         job_registry=job_registry,
-    ))
+    )
+    register(_run_claude_code_tool)
 
     # Git/GitHub tools — workspace-aware (workspace_id routes cwd to external workspace)
     register(GitStatusTool(workspace_store=workspace_store))
@@ -236,7 +237,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
     pipeline_store = PipelineStore(pipeline_db_path)
     register(ManagePipelineTool(pipeline_store=pipeline_store, workspace_store=workspace_store, job_registry=job_registry))
     register(SavePipelineArtifactTool(pipeline_store=pipeline_store))
-    register(RunPipelineTool(
+    _run_pipeline_tool = RunPipelineTool(
         notifier=_notifier_instance,
         pipeline_store=pipeline_store,
         workspace_store=workspace_store,
@@ -244,7 +245,8 @@ def _build_agent(notifier: object = None) -> BuildResult:
         config=config,
         tool_registry=registry,
         job_registry=job_registry,
-    ))
+    )
+    register(_run_pipeline_tool)
 
     # Schedule store + tools (scheduler wired later by each command)
     schedule_db_path = data_dir / "schedule.db"
@@ -292,6 +294,8 @@ def _build_agent(notifier: object = None) -> BuildResult:
     )
 
     _spawn_team_tool.set_agent(agent)
+    _run_claude_code_tool.set_agent(agent)
+    _run_pipeline_tool.set_agent(agent)
 
     compactor = MemoryCompactor(
         store=memory,

@@ -53,7 +53,14 @@
 ### ~~1. Telegram end-to-end verification~~ ✓ DONE
 - Voice, photo, text, inline confirmations, /newsession, /cost — all verified on mobile
 
-### 1. Fix calendar integration
+### ~~1. Job failure notifications + startup catch-up~~ ✓ DONE
+- Scheduler notifies via Telegram on job failure; heartbeat writer + startup catch-up + connectivity monitor implemented
+
+### ~~2. Long job output — Telegram readability~~ ✓ DONE
+- Long output (>500 chars) → `gh gist create --secret` → Enki summary (2-3 bullets via `agent.run_turn()`) → `[summary]\n\nFull report: [gist URL]`
+- Applies to: `RunClaudeCodeTool` and pipeline stage notifications; graceful degradation if gist/summary fails
+
+### 3. Fix calendar integration
 - gcalcli OAuth token on macOS lands in `~/Library/Application Support/gcalcli/oauth`, not `~/.config/gcalcli/`
 - Container mounts `~/.config/gcalcli` but the token isn't there after host auth
 - Fix: either symlink/copy on host, or rethink auth flow so token lands in the mounted path
