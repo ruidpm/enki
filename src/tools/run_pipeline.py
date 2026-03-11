@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
+from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.guardrails.cost_guard import CostGuardHook
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
@@ -132,6 +134,7 @@ class RunPipelineTool:
         config: Any,
         tool_registry: dict[str, Any],
         job_registry: JobRegistry | None = None,
+        cost_guard: CostGuardHook | None = None,
     ) -> None:
         self._notifier = notifier
         self._pipelines = pipeline_store
@@ -140,6 +143,7 @@ class RunPipelineTool:
         self._config = config
         self._registry = tool_registry
         self._job_registry: JobRegistry | None = job_registry
+        self._cost_guard: CostGuardHook | None = cost_guard
         self._agent: Any = None
 
     def set_agent(self, agent: Any) -> None:
@@ -283,7 +287,7 @@ class RunPipelineTool:
             self._pipelines.set_status(pipeline_id, PipelineStatus.ABORTED)
             _finish_job(success=False, error="Cancelled")
             await self._notifier.send(f"[Pipeline {pipeline_id}] Cancelled.")
-            return
+            raise
         except Exception as exc:
             log.error("run_pipeline_error", pipeline_id=pipeline_id, error=str(exc))
             self._pipelines.set_status(pipeline_id, PipelineStatus.ABORTED)
@@ -366,7 +370,7 @@ class RunPipelineTool:
         if team is None or not team["active"]:
             raise RuntimeError(f"Team '{team_id}' not found or inactive.")
 
-        allowed = set(team["tools"]) - {"spawn_team", "spawn_agent", "run_pipeline"}
+        allowed = set(team["tools"]) - {"spawn_team", "spawn_agent", "run_pipeline"} - REQUIRES_CONFIRM
         subset = {n: t for n, t in self._registry.items() if n in allowed}
 
         extra_context = ""
@@ -376,6 +380,10 @@ class RunPipelineTool:
                 if self._job_registry is not None:
                     self._job_registry.add_tokens(_pid, inp, out)
 
+            def _on_cost(inp: int, out: int, cost: float) -> None:
+                if self._cost_guard is not None:
+                    self._cost_guard.record_llm_call(inp, out, cost)
+
             runner = SubAgentRunner(
                 config=self._config,
                 tools=subset,
@@ -383,6 +391,7 @@ class RunPipelineTool:
                 system_prefix=team["role"],
                 label=f"{team_id}/{stage}",
                 on_tokens=_on_tokens,
+                on_cost=_on_cost,
             )
             result, tokens = await runner.run(prompt)
             self._teams.log_task(
@@ -467,6 +476,7 @@ class RunPipelineTool:
             )
         except TimeoutError as exc:
             proc.kill()
+            await proc.wait()
             raise RuntimeError(f"IMPLEMENT stage timed out after {_CCC_TIMEOUT // 60} minutes.") from exc
 
         if proc.returncode != 0:

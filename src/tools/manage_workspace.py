@@ -107,12 +107,31 @@ class ManageWorkspaceTool:
 
     def __init__(self, store: WorkspaceStore, workspaces_base_dir: Path = Path("workspaces")) -> None:
         self._store = store
-        self._base_dir = workspaces_base_dir
+        self._base_dir = workspaces_base_dir.resolve()
         # Update local_path description with the actual base dir
-        base = str(workspaces_base_dir.resolve())
+        base = str(self._base_dir)
         self.input_schema["properties"]["local_path"]["description"] = (
             f"Absolute path. For new workspaces, use {base}/<name>."
         )
+
+    def _validate_path(self, local_path: str) -> str | None:
+        """Validate that local_path resolves to within the workspaces base dir.
+
+        Returns an error string if invalid, None if OK.
+        """
+        resolved = Path(local_path).expanduser().resolve()
+        if not resolved.is_relative_to(self._base_dir):
+            log.warning(
+                "workspace_path_traversal_blocked",
+                local_path=local_path,
+                resolved=str(resolved),
+                base_dir=str(self._base_dir),
+            )
+            return (
+                f"[ERROR] Path '{local_path}' is outside the allowed workspaces directory "
+                f"({self._base_dir}). All workspace paths must be within the base directory."
+            )
+        return None
 
     async def execute(self, **kwargs: Any) -> str:
         action: str = kwargs.get("action", "")
@@ -141,6 +160,8 @@ class ManageWorkspaceTool:
             return "[ERROR] workspace_id is required."
         if not local_path:
             return "[ERROR] local_path is required."
+        if err := self._validate_path(local_path):
+            return err
         if not Path(local_path).exists():
             return f"[ERROR] local_path '{local_path}' not found. Path must exist on disk."
 
@@ -167,6 +188,8 @@ class ManageWorkspaceTool:
             return "[ERROR] workspace_id is required."
         if not local_path:
             return "[ERROR] local_path is required."
+        if err := self._validate_path(local_path):
+            return err
 
         path = Path(local_path).expanduser()
         path.mkdir(parents=True, exist_ok=True)
@@ -207,6 +230,8 @@ class ManageWorkspaceTool:
             return "[ERROR] git_remote is required for clone."
         if not local_path:
             return "[ERROR] local_path (clone destination) is required."
+        if err := self._validate_path(local_path):
+            return err
         if not (git_remote.startswith("https://") or git_remote.startswith("http://") or git_remote.startswith("git@")):
             return "[ERROR] Clone URL must start with https://, http://, or git@ (SSH)."
 
@@ -256,7 +281,7 @@ class ManageWorkspaceTool:
 
         if not workspace_id:
             return "[ERROR] workspace_id is required."
-        if trust_level is None or trust_level not in TrustLevel.ALL:
+        if trust_level is None or trust_level not in TrustLevel.ALL:  # type: ignore[attr-defined]
             return (
                 f"[ERROR] Invalid trust_level '{trust_level}'. "
                 "Valid: 0=read_only 1=propose 2=auto_commit 3=auto_push 4=trusted"

@@ -12,10 +12,12 @@ from typing import Any
 
 import anthropic
 import structlog
+import structlog.contextvars
 
 from .audit.db import AuditDB
-from .audit.events import Tier1Event, Tier2Event
+from .audit.events import Tier2Event
 from .config import Settings
+from .costs import model_cost_usd
 from .guardrails import GuardrailChain
 from .guardrails.cost_guard import CostGuardHook
 from .guardrails.loop_detector import LoopDetectorHook
@@ -24,13 +26,6 @@ from .memory.store import MemoryStore
 from .tools import Tool
 
 log = structlog.get_logger()
-
-# Cost per million tokens (input, output) in USD — approximate
-_MODEL_COSTS: dict[str, tuple[float, float]] = {
-    "claude-haiku-4-5-20251001": (0.80, 4.00),
-    "claude-sonnet-4-6": (3.00, 15.00),
-    "claude-opus-4-6": (15.00, 75.00),
-}
 
 _HAIKU_KEYWORDS = re.compile(
     r"\b(list|show|what is|what are|what time|when is|status|remind|summarize briefly)\b",
@@ -103,6 +98,56 @@ class Agent:
     def session_id(self) -> str:
         return self._session_id
 
+    def _estimate_tokens(self) -> int:
+        """Estimate total conversation tokens using chars/4 heuristic."""
+        total_chars = 0
+        for msg in self._conversation:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                total_chars += len(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        total_chars += len(str(block.get("content", "")))
+                        total_chars += len(str(block.get("text", "")))
+                    else:
+                        total_chars += len(str(block))
+        return total_chars // 4
+
+    def _prune_conversation(self) -> None:
+        """Drop oldest turns when conversation exceeds max_context_tokens.
+
+        Keeps at least 3 recent user/assistant pairs (6 messages).
+        Logs a warning when approaching the limit (>= 80%).
+        """
+        max_tokens = self._config.max_context_tokens
+        estimated = self._estimate_tokens()
+        min_keep = 6  # 3 recent pairs
+
+        # Warn at 80%
+        if estimated >= int(max_tokens * 0.8):
+            log.warning(
+                "context_window_approaching_limit",
+                estimated_tokens=estimated,
+                max_tokens=max_tokens,
+                pct=round(estimated / max_tokens * 100),
+                conversation_len=len(self._conversation),
+            )
+
+        # Prune if over limit
+        if estimated > max_tokens and len(self._conversation) > min_keep:
+            # Drop messages from the front, 2 at a time (user+assistant pairs)
+            while (
+                self._estimate_tokens() > max_tokens
+                and len(self._conversation) > min_keep
+            ):
+                self._conversation.pop(0)
+            log.info(
+                "context_window_pruned",
+                remaining_messages=len(self._conversation),
+                estimated_tokens=self._estimate_tokens(),
+            )
+
     def new_session(self) -> None:
         """Clear conversation history and start a fresh session."""
         self._conversation.clear()
@@ -129,10 +174,6 @@ class Agent:
             for t in self._tools.values()
         ]
 
-    def _cost_usd(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        in_rate, out_rate = _MODEL_COSTS.get(model, (3.00, 15.00))
-        return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
-
     async def run_turn(self, user_message: str | list[dict[str, Any]]) -> str:
         """Process one user turn. Returns assistant response text.
 
@@ -144,6 +185,13 @@ class Agent:
 
     async def _run_turn_locked(self, user_message: str | list[dict[str, Any]]) -> str:
         """Inner turn implementation — must only be called while _run_lock is held."""
+        structlog.contextvars.bind_contextvars(session_id=self._session_id)
+        try:
+            return await self._run_turn_inner(user_message)
+        finally:
+            structlog.contextvars.unbind_contextvars("session_id")
+
+    async def _run_turn_inner(self, user_message: str | list[dict[str, Any]]) -> str:
         # Auto-reset session after configured idle period
         idle_hours = (time.monotonic() - self._last_activity) / 3600
         if idle_hours >= self._config.session_timeout_hours:
@@ -197,6 +245,9 @@ class Agent:
                     self._conversation.pop()
                     log.warning("healed_orphaned_tool_use")
 
+        # Prune conversation if approaching context limit
+        self._prune_conversation()
+
         # Add user message to conversation history
         self._conversation.append({"role": "user", "content": user_message})
 
@@ -220,7 +271,7 @@ class Agent:
 
             # Track cost
             usage = response.usage
-            cost = self._cost_usd(model, usage.input_tokens, usage.output_tokens)
+            cost = model_cost_usd(model, usage.input_tokens, usage.output_tokens)
             self._cost_guard.record_llm_call(usage.input_tokens, usage.output_tokens, cost)
             await self._audit.log_tier2(
                 Tier2Event.LLM_CALL, self._session_id,
@@ -256,12 +307,16 @@ class Agent:
                     # Run guardrail chain
                     allow, reason = await self._guardrails.run(tool_name, params)
 
+                    # Record guardrail decision (both allow and block)
+                    await self._audit.log_tool_call(
+                        tool_name=tool_name,
+                        params=params,
+                        allowed=allow,
+                        block_reason=reason,
+                        session_id=self._session_id,
+                    )
+
                     if not allow:
-                        # Audit every guardrail block as a Tier1 security event
-                        await self._audit.log_tier1(
-                            Tier1Event.GUARDRAIL_BLOCK, self._session_id,
-                            {"tool": tool_name, "reason": reason},
-                        )
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block.id,
@@ -288,8 +343,12 @@ class Agent:
                         result = f"[Tool error: {exc}]"
                         log.error("tool_error", tool=tool_name, error=str(exc))
 
+                    result_preview = (
+                        result[:200] if isinstance(result, str) else str(result)[:200]
+                    )
                     await self._audit.log_tier2(
-                        Tier2Event.TOOL_CALLED, self._session_id, {"tool": tool_name}
+                        Tier2Event.TOOL_CALLED, self._session_id,
+                        {"tool": tool_name, "result_preview": result_preview},
                     )
                     tool_results.append({
                         "type": "tool_result",

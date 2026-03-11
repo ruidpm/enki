@@ -12,8 +12,6 @@ from ..guardrails.code_scanner import CodeScanner
 
 log = structlog.get_logger()
 
-_SCANNER = CodeScanner()
-
 
 class EvolveNotifier(Protocol):
     async def send_diff(self, tool_name: str, description: str, code: str, code_hash: str) -> None:
@@ -66,6 +64,7 @@ class ProposeTool:
         self._pending = pending_dir
         self._tools_dir = tools_dir
         self._notifier = notifier
+        self._scanner = CodeScanner()
         self._pending.mkdir(parents=True, exist_ok=True)
         self._tools_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +78,7 @@ class ProposeTool:
             return f"Invalid tool name '{name}'. Must be snake_case alphanumeric."
 
         # Scan code
-        scan = _SCANNER.scan(code, filename=f"tools/{name}.py")
+        scan = self._scanner.scan(code, filename=f"tools/{name}.py")
         if scan.blocked:
             log.warning("propose_tool_blocked", name=name, reason=scan.reason)
             return f"[BLOCKED by code scanner] {scan.reason}"

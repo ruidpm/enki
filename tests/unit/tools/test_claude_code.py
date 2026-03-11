@@ -137,6 +137,7 @@ async def test_background_notifies_on_nonzero_exit(tool: RunClaudeCodeTool, noti
 async def test_background_notifies_on_timeout(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     proc = MagicMock()
     proc.kill = MagicMock()
+    proc.wait = AsyncMock()
     proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", _mock_spawn_seq(proc)):
         await tool._run_background("t01", "infinite task")

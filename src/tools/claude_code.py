@@ -274,6 +274,7 @@ class RunClaudeCodeTool:
             )
         except TimeoutError:
             proc.kill()
+            await proc.wait()
             log.error("claude_code_timeout", job_id=job_id)
             if claude_md_path and claude_md_path.exists():
                 claude_md_path.unlink()
@@ -370,26 +371,29 @@ class RunClaudeCodeTool:
 
     async def _send_output(self, job_id: str, full_output: str) -> None:
         """Send job output to notifier. Long output → secret gist + Enki summary."""
-        if len(full_output) <= _GIST_THRESHOLD or self._agent is None:
-            await self._notifier.send(f"[Job {job_id}] Done:\n{full_output[:800]}")
-            return
-
-        gist_url = await self._create_gist(full_output, f"Enki job {job_id} output")
-        summary_prompt = (
-            f"Summarise the following Claude Code job output in 2-3 bullet points "
-            f"for a Telegram message. Be concise and focus on what changed.\n\n{full_output[:4000]}"
-        )
         try:
-            summary = await self._agent.run_turn(summary_prompt)
-        except Exception as exc:
-            log.warning("gist_summary_failed", error=str(exc))
-            summary = full_output[:400]
+            if len(full_output) <= _GIST_THRESHOLD or self._agent is None:
+                await self._notifier.send(f"[Job {job_id}] Done:\n{full_output[:800]}")
+                return
 
-        if gist_url:
-            await self._notifier.send(
-                f"[Job {job_id}] Done:\n{summary}\n\nFull report: {gist_url}"
+            gist_url = await self._create_gist(full_output, f"Enki job {job_id} output")
+            summary_prompt = (
+                f"Summarise the following Claude Code job output in 2-3 bullet points "
+                f"for a Telegram message. Be concise and focus on what changed.\n\n{full_output[:4000]}"
             )
-        else:
-            await self._notifier.send(
-                f"[Job {job_id}] Done:\n{summary}\n\n(full output too long; gist creation failed)"
-            )
+            try:
+                summary = await self._agent.run_turn(summary_prompt)
+            except Exception as exc:
+                log.warning("gist_summary_failed", error=str(exc))
+                summary = full_output[:400]
+
+            if gist_url:
+                await self._notifier.send(
+                    f"[Job {job_id}] Done:\n{summary}\n\nFull report: {gist_url}"
+                )
+            else:
+                await self._notifier.send(
+                    f"[Job {job_id}] Done:\n{summary}\n\n(full output too long; gist creation failed)"
+                )
+        except Exception as exc:
+            log.error("claude_code_send_output_failed", job_id=job_id, error=str(exc))

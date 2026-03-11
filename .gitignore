@@ -35,3 +35,6 @@ memory/facts.md
 credentials.json
 token.json
 plans/
+
+# Workspaces (local scratch dirs)
+workspaces/

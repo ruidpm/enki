@@ -6,7 +6,7 @@ import base64
 import contextlib
 import json
 import os
-import uuid
+import tempfile
 from typing import Any
 
 import structlog
@@ -165,7 +165,8 @@ class TelegramBot:
             return
         assert self._agent is not None
 
-        tmp_path = f"/tmp/voice_{uuid.uuid4().hex}.ogg"
+        fd, tmp_path = tempfile.mkstemp(suffix=".ogg", prefix="voice_")
+        os.close(fd)  # close the fd; download_to_drive writes by path
         try:
             tg_file = await ctx.bot.get_file(update.message.voice.file_id)
             await tg_file.download_to_drive(tmp_path)
@@ -196,7 +197,8 @@ class TelegramBot:
             return
         assert self._agent is not None
 
-        tmp_path = f"/tmp/photo_{uuid.uuid4().hex}.jpg"
+        fd, tmp_path = tempfile.mkstemp(suffix=".jpg", prefix="photo_")
+        os.close(fd)  # close the fd; download_to_drive writes by path
         try:
             # Highest resolution is last in the list
             photo = update.message.photo[-1]

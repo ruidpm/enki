@@ -195,14 +195,14 @@ def test_blocks_signal_module(scanner: CodeScanner) -> None:
 def test_subprocess_allowed_in_restart_filename(scanner: CodeScanner) -> None:
     """subprocess is allowed in restart.py — the one explicit exception."""
     code = "import subprocess\nsubprocess.Popen(['docker', 'compose', 'restart', 'assistant'])"
-    result = scanner.scan(code, filename="tools/restart.py")
+    result = scanner.scan(code, filename="src/tools/restart.py")
     assert not result.blocked, result.reason
 
 
 def test_subprocess_allowed_in_claude_code_filename(scanner: CodeScanner) -> None:
     """subprocess is allowed in claude_code.py."""
     code = "import subprocess\nsubprocess.run(['claude', '-p', 'task'])"
-    result = scanner.scan(code, filename="tools/claude_code.py")
+    result = scanner.scan(code, filename="src/tools/claude_code.py")
     assert not result.blocked, result.reason
 
 

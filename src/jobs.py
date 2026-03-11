@@ -13,21 +13,7 @@ import asyncio
 import time
 from typing import Any
 
-# Cost per token by model substring (input_rate, output_rate) in USD
-_MODEL_COSTS: dict[str, tuple[float, float]] = {
-    "haiku":  (0.80e-6, 4.00e-6),
-    "sonnet": (3.00e-6, 15.0e-6),
-    "opus":   (15.0e-6, 75.0e-6),
-}
-_DEFAULT_COST = _MODEL_COSTS["haiku"]
-
-
-def _cost_rates(model: str) -> tuple[float, float]:
-    m = model.lower()
-    for key, rates in _MODEL_COSTS.items():
-        if key in m:
-            return rates
-    return _DEFAULT_COST
+from src.costs import cost_rates_per_token
 
 
 class JobStatus:
@@ -133,6 +119,6 @@ class JobRegistry:
         tokens_in = job.get("tokens_in", 0)
         tokens_out = job.get("tokens_out", 0)
         job["tokens_total"] = tokens_in + tokens_out
-        rate_in, rate_out = _cost_rates(job.get("model", ""))
+        rate_in, rate_out = cost_rates_per_token(job.get("model", ""))
         job["cost_usd"] = tokens_in * rate_in + tokens_out * rate_out
         return job

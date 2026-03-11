@@ -1,11 +1,11 @@
 """Proactive scheduler — APScheduler cron jobs for briefings and alerts."""
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import structlog
+from apscheduler.jobstores.base import JobLookupError  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
@@ -15,7 +15,11 @@ if TYPE_CHECKING:
 log = structlog.get_logger()
 
 
-class Notifier(Protocol):
+class SchedulerAgent(Protocol):
+    async def run_turn(self, user_message: str) -> str: ...
+
+
+class SchedulerNotifier(Protocol):
     async def send(self, message: str) -> None: ...
 
 
@@ -30,8 +34,8 @@ class ScheduledJob:
 class Scheduler:
     def __init__(
         self,
-        agent: Any,
-        notifier: Notifier,
+        agent: SchedulerAgent,
+        notifier: SchedulerNotifier,
         store: ScheduleStore | None = None,
     ) -> None:
         self._agent = agent
@@ -57,8 +61,10 @@ class Scheduler:
     def add_job(self, job: ScheduledJob) -> None:
         """Register or overwrite a scheduled job."""
         self.jobs[job.job_id] = job
-        with contextlib.suppress(Exception):
+        try:
             self._scheduler.remove_job(job.job_id)
+        except (JobLookupError, KeyError):
+            pass  # Job didn't exist yet — expected on first add
         if job.enabled:
             minute, hour, dom, month, dow = job.cron.split()
             self._scheduler.add_job(
@@ -77,8 +83,10 @@ class Scheduler:
     def remove_job(self, job_id: str) -> None:
         """Remove a job from APScheduler and the in-memory registry."""
         self.jobs.pop(job_id, None)
-        with contextlib.suppress(Exception):
+        try:
             self._scheduler.remove_job(job_id)
+        except (JobLookupError, KeyError):
+            pass  # Job didn't exist — nothing to remove
 
     def set_job_enabled(self, job_id: str, enabled: bool) -> None:
         """Pause or resume a job without losing its config."""
@@ -89,8 +97,10 @@ class Scheduler:
         if enabled:
             self.add_job(job)
         else:
-            with contextlib.suppress(Exception):
+            try:
                 self._scheduler.remove_job(job_id)
+            except (JobLookupError, KeyError):
+                pass  # Already removed or never added
 
     async def _run_job(self, job: ScheduledJob) -> None:
         log.info("job_running", job_id=job.job_id)
@@ -101,9 +111,15 @@ class Scheduler:
                 self._store.record_run(job.job_id)
         except Exception as exc:
             log.error("job_error", job_id=job.job_id, error=str(exc))
-            with contextlib.suppress(Exception):
+            try:
                 await self._notifier.send(
                     f"Job `{job.job_id}` failed: {exc}"
+                )
+            except Exception as notify_exc:
+                log.warning(
+                    "job_notify_fallback_failed",
+                    job_id=job.job_id,
+                    error=str(notify_exc),
                 )
 
     def start(self) -> None:

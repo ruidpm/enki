@@ -143,6 +143,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
     config.memory_db_path.parent.mkdir(parents=True, exist_ok=True)
 
     audit = AuditDB(config.audit_db_path)
+    audit.purge_old_tier2(30)  # M-07: clean stale Tier2 records at startup
     _facts_path = Path("memory/facts.md")
     _logs_dir = Path("memory/logs")
     memory = MemoryStore(config.memory_db_path, logs_dir=_logs_dir, facts_path=_facts_path)
@@ -190,6 +191,15 @@ def _build_agent(notifier: object = None) -> BuildResult:
 
     _notifier_instance = notifier if notifier is not None else _CliNotifier()
 
+    # Cost guard — created early so tools can report sub-agent costs
+    cost_guard = CostGuardHook(
+        max_tokens_per_session=config.max_tokens_per_session,
+        max_daily_cost_usd=config.max_daily_cost_usd,
+        max_monthly_cost_usd=config.max_monthly_cost_usd,
+        max_llm_calls_per_session=config.max_llm_calls_per_session,
+        max_autonomous_turns=config.max_autonomous_turns,
+    )
+
     # Register all tools
     register(TasksTool(config.tasks_db_path))
     register(WebSearchTool(config.brave_search_api_key))
@@ -204,7 +214,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
     register(RemoveToolTool(tools_dir=tools_dir, disabled_dir=disabled_dir, registry=registry))
     register(RequestRestartTool(notifier=_notifier_instance))
     register(SendMessageTool(notifier=_notifier_instance))
-    register(SpawnAgentTool(config=config, tool_registry=registry))
+    register(SpawnAgentTool(config=config, tool_registry=registry, cost_guard=cost_guard))
 
     # Job registry — in-memory, tracks live background tasks (CCC, pipelines, teams)
     job_registry = JobRegistry()
@@ -216,6 +226,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
     _spawn_team_tool = SpawnTeamTool(
         store=teams_store, config=config, tool_registry=registry,
         notifier=_notifier_instance, job_registry=job_registry,
+        cost_guard=cost_guard,
     )
     register(_spawn_team_tool)
     register(TeamReportTool(store=teams_store))
@@ -254,6 +265,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
         config=config,
         tool_registry=registry,
         job_registry=job_registry,
+        cost_guard=cost_guard,
     )
     register(_run_pipeline_tool)
 
@@ -267,13 +279,6 @@ def _build_agent(notifier: object = None) -> BuildResult:
     # Auto-discover any tools written by propose_tool (no-arg constructors only)
     load_tools_from_dir(tools_dir)
 
-    cost_guard = CostGuardHook(
-        max_tokens_per_session=config.max_tokens_per_session,
-        max_daily_cost_usd=config.max_daily_cost_usd,
-        max_monthly_cost_usd=config.max_monthly_cost_usd,
-        max_llm_calls_per_session=config.max_llm_calls_per_session,
-        max_autonomous_turns=config.max_autonomous_turns,
-    )
     loop_detector = LoopDetectorHook(threshold=config.loop_detection_threshold)
     rate_limiter = RateLimiterHook(max_per_turn=config.max_tool_calls_per_turn)
 

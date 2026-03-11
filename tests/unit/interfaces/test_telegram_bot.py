@@ -301,3 +301,28 @@ async def test_ask_double_confirm_first_no_skips_second(bot: TelegramBot) -> Non
     assert result is False
     # Only 1 send_message call (second confirmation never reached)
     assert bot._app.bot.send_message.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# M-04: Secure temp file creation
+# ---------------------------------------------------------------------------
+
+def test_voice_handler_uses_tempfile_mkstemp() -> None:
+    """Verify the module uses tempfile for secure temp files, not f-string paths."""
+    import inspect
+
+    import src.interfaces.telegram_bot as mod
+    source = inspect.getsource(mod.TelegramBot._on_voice)
+    # Must use tempfile.mkstemp, not f-string /tmp/ paths
+    assert "mkstemp" in source or "NamedTemporaryFile" in source
+    assert 'f"/tmp/' not in source
+
+
+def test_photo_handler_uses_tempfile_mkstemp() -> None:
+    """Verify the module uses tempfile for secure temp files, not f-string paths."""
+    import inspect
+
+    import src.interfaces.telegram_bot as mod
+    source = inspect.getsource(mod.TelegramBot._on_photo)
+    assert "mkstemp" in source or "NamedTemporaryFile" in source
+    assert 'f"/tmp/' not in source

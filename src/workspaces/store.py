@@ -1,28 +1,38 @@
 """Workspace registry — SQLite-backed store for external project workspaces."""
 from __future__ import annotations
 
+import asyncio
+import re
 import sqlite3
+from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
+# Patterns that indicate an actual token value (not an env var name)
+_TOKEN_PREFIXES = ("ghp_", "gho_", "ghs_", "ghr_", "github_pat_")
+# Env var names: uppercase/lowercase letters, digits, underscores — no spaces
+_ENV_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-class TrustLevel:
+
+class TrustLevel(IntEnum):
     """Graduated autonomy levels for a workspace.
 
-    READ_ONLY   (0) — Enki can read/analyse only; no writes.
-    PROPOSE     (1) — Write locally; all git ops need confirmation. (default)
-    AUTO_COMMIT (2) — Auto-commit to feature branches; confirm push.
-    AUTO_PUSH   (3) — Auto-push feature branches; confirm PR creation.
-    TRUSTED     (4) — Auto-create PRs; user reviews on GitHub only.
+    READ_ONLY   (0) -- Enki can read/analyse only; no writes.
+    PROPOSE     (1) -- Write locally; all git ops need confirmation. (default)
+    AUTO_COMMIT (2) -- Auto-commit to feature branches; confirm push.
+    AUTO_PUSH   (3) -- Auto-push feature branches; confirm PR creation.
+    TRUSTED     (4) -- Auto-create PRs; user reviews on GitHub only.
     """
 
-    READ_ONLY: int = 0
-    PROPOSE: int = 1
-    AUTO_COMMIT: int = 2
-    AUTO_PUSH: int = 3
-    TRUSTED: int = 4
+    READ_ONLY = 0
+    PROPOSE = 1
+    AUTO_COMMIT = 2
+    AUTO_PUSH = 3
+    TRUSTED = 4
 
-    ALL: frozenset[int] = frozenset({0, 1, 2, 3, 4})
+
+# Backward-compatible frozenset of all trust level values
+TrustLevel.ALL = frozenset(TrustLevel)  # type: ignore[attr-defined]
 
 
 _CREATE_TABLE = """
@@ -50,10 +60,27 @@ class WorkspaceStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_CREATE_TABLE)
         self._conn.commit()
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_github_token_env(value: str | None) -> None:
+        """Ensure github_token_env is an env var name, not a raw token."""
+        if value is None:
+            return
+        if any(value.startswith(prefix) for prefix in _TOKEN_PREFIXES):
+            raise ValueError(
+                f"github_token_env must be an env var name (e.g. 'GH_TOKEN'), "
+                f"not a raw token value. Got a value starting with '{value[:6]}...'."
+            )
+        if not _ENV_VAR_RE.match(value):
+            raise ValueError(
+                f"github_token_env must be an env var name (letters, digits, underscores). "
+                f"Got: '{value}'."
+            )
 
     def add(
         self,
@@ -68,6 +95,7 @@ class WorkspaceStore:
         github_token_env: str | None = None,
     ) -> None:
         """Insert or replace a workspace record."""
+        self._validate_github_token_env(github_token_env)
         self._conn.execute(
             """
             INSERT OR REPLACE INTO workspaces
@@ -122,3 +150,46 @@ class WorkspaceStore:
             "SELECT * FROM workspaces ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Async wrappers — protect concurrent access with asyncio.Lock
+    # ------------------------------------------------------------------
+
+    async def add_async(
+        self,
+        workspace_id: str,
+        *,
+        name: str,
+        local_path: str,
+        git_remote: str | None = None,
+        language: str | None = None,
+        description: str | None = None,
+        trust_level: int = TrustLevel.PROPOSE,
+        github_token_env: str | None = None,
+    ) -> None:
+        async with self._lock:
+            self.add(
+                workspace_id, name=name, local_path=local_path,
+                git_remote=git_remote, language=language, description=description,
+                trust_level=trust_level, github_token_env=github_token_env,
+            )
+
+    async def remove_async(self, workspace_id: str) -> bool:
+        async with self._lock:
+            return self.remove(workspace_id)
+
+    async def update_trust_async(self, workspace_id: str, trust_level: int) -> bool:
+        async with self._lock:
+            return self.update_trust(workspace_id, trust_level)
+
+    async def touch_async(self, workspace_id: str) -> None:
+        async with self._lock:
+            self.touch(workspace_id)
+
+    async def get_async(self, workspace_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            return self.get(workspace_id)
+
+    async def list_all_async(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.list_all()

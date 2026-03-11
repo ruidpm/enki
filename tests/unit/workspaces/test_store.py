@@ -128,3 +128,47 @@ def test_add_duplicate_overwrites(store: WorkspaceStore) -> None:
     assert ws is not None
     assert ws["name"] == "New"
     assert ws["local_path"] == "/new"
+
+
+# ---------------------------------------------------------------------------
+# H-04: github_token_env stores env var NAMES only, not raw tokens
+# ---------------------------------------------------------------------------
+
+def test_github_token_env_accepts_env_var_name(store: WorkspaceStore) -> None:
+    """Env var names like GH_TOKEN or MY_PAT_123 should be accepted."""
+    store.add("ws1", name="X", local_path="/x", github_token_env="GH_TOKEN")
+    ws = store.get("ws1")
+    assert ws is not None
+    assert ws["github_token_env"] == "GH_TOKEN"
+
+
+def test_github_token_env_rejects_raw_token_ghp(store: WorkspaceStore) -> None:
+    """Actual GitHub tokens (ghp_...) must be rejected."""
+    with pytest.raises(ValueError, match="env var name"):
+        store.add("ws1", name="X", local_path="/x", github_token_env="ghp_abc123xyz")
+
+
+def test_github_token_env_rejects_raw_token_gho(store: WorkspaceStore) -> None:
+    """Actual GitHub OAuth tokens (gho_...) must be rejected."""
+    with pytest.raises(ValueError, match="env var name"):
+        store.add("ws1", name="X", local_path="/x", github_token_env="gho_abc123xyz")
+
+
+def test_github_token_env_rejects_raw_token_github_pat(store: WorkspaceStore) -> None:
+    """Fine-grained PATs (github_pat_...) must be rejected."""
+    with pytest.raises(ValueError, match="env var name"):
+        store.add("ws1", name="X", local_path="/x", github_token_env="github_pat_abc123xyz")
+
+
+def test_github_token_env_accepts_none(store: WorkspaceStore) -> None:
+    """None is valid (no token configured)."""
+    store.add("ws1", name="X", local_path="/x", github_token_env=None)
+    ws = store.get("ws1")
+    assert ws is not None
+    assert ws["github_token_env"] is None
+
+
+def test_github_token_env_rejects_values_with_spaces(store: WorkspaceStore) -> None:
+    """Env var names don't contain spaces."""
+    with pytest.raises(ValueError, match="env var name"):
+        store.add("ws1", name="X", local_path="/x", github_token_env="not a var name")

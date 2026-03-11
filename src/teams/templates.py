@@ -10,6 +10,10 @@ Language-specific rules are injected dynamically via workspace CLAUDE.md
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.teams.store import TeamsStore
 
 
 @dataclass(frozen=True)
@@ -104,13 +108,11 @@ ENGINEERING_TEAMS: list[TeamTemplate] = [
 ]
 
 
-def seed_engineering_teams(store: object) -> None:
+def seed_engineering_teams(store: TeamsStore) -> None:
     """Seed standard engineering teams into TeamsStore (idempotent).
 
-    Skips teams that already exist — preserves user customisations.
+    Skips teams that already exist -- preserves user customisations.
     """
-    from src.teams.store import TeamsStore
-    assert isinstance(store, TeamsStore)
 
     existing = {t["team_id"] for t in store.list_teams()}
     for tmpl in ENGINEERING_TEAMS:

@@ -8,11 +8,17 @@ notify() {
     -o /dev/null 2>&1 || true
 }
 
+# Forward signals to the python process for clean shutdown
+trap 'kill -TERM "$PID" 2>/dev/null' TERM INT
+
 notify "Enki is online"
 
 START=$(date +%s)
-python main.py telegram
+python main.py telegram &
+PID=$!
+wait "$PID"
 CODE=$?
+
 UPTIME=$(( $(date +%s) - START ))
 
 # Only alert on crash if the process ran >30s (avoids spam on rapid boot failure loops)

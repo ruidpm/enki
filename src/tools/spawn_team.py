@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 
+from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.guardrails.cost_guard import CostGuardHook
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
 
@@ -62,12 +64,14 @@ class SpawnTeamTool:
         tool_registry: dict[str, Any],
         notifier: Notifier,
         job_registry: JobRegistry | None = None,
+        cost_guard: CostGuardHook | None = None,
     ) -> None:
         self._store = store
         self._config = config
         self._registry = tool_registry
         self._notifier = notifier
         self._job_registry: JobRegistry | None = job_registry
+        self._cost_guard: CostGuardHook | None = cost_guard
         self._agent: Agent | None = None
 
     def set_agent(self, agent: Agent) -> None:
@@ -90,7 +94,7 @@ class SpawnTeamTool:
                 f"({used}/{budget} tokens used)."
             )
 
-        allowed_tool_names: set[str] = set(team["tools"]) - _EXCLUDED_TOOLS
+        allowed_tool_names: set[str] = set(team["tools"]) - _EXCLUDED_TOOLS - REQUIRES_CONFIRM
         subset = {
             name: tool
             for name, tool in self._registry.items()
@@ -139,6 +143,10 @@ class SpawnTeamTool:
                 if self._job_registry is not None:
                     self._job_registry.add_tokens(job_id, inp, out)
 
+            def _on_cost(inp: int, out: int, cost: float) -> None:
+                if self._cost_guard is not None:
+                    self._cost_guard.record_llm_call(inp, out, cost)
+
             runner = SubAgentRunner(
                 config=self._config,
                 tools=subset,
@@ -146,6 +154,7 @@ class SpawnTeamTool:
                 system_prefix=team["role"],
                 label=team_id,
                 on_tokens=_on_tokens,
+                on_cost=_on_cost,
             )
             raw_result, tokens_used = await runner.run(task)
         except asyncio.CancelledError:
@@ -190,12 +199,18 @@ class SpawnTeamTool:
             except Exception as exc:
                 log.error("spawn_team_sage_relay_error", job_id=job_id, error=str(exc))
                 # Fallback: send raw result rather than silently drop it
-                await self._notifier.send(
-                    f"**Team '{team_id}'** finished job `{job_id}` (relay error — raw result):\n\n{raw_result}"
-                )
+                try:
+                    await self._notifier.send(
+                        f"**Team '{team_id}'** finished job `{job_id}` (relay error — raw result):\n\n{raw_result}"
+                    )
+                except Exception as fallback_exc:
+                    log.error("spawn_team_fallback_send_failed", job_id=job_id, error=str(fallback_exc))
         else:
             # No agent wired (e.g. tests or CLI without agent set) — send raw
             status = "✅" if success else "❌"
-            await self._notifier.send(
-                f"{status} **Team '{team_id}'** finished job `{job_id}`\n\n{raw_result}"
-            )
+            try:
+                await self._notifier.send(
+                    f"{status} **Team '{team_id}'** finished job `{job_id}`\n\n{raw_result}"
+                )
+            except Exception as exc:
+                log.error("spawn_team_raw_send_failed", job_id=job_id, error=str(exc))

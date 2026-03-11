@@ -21,8 +21,10 @@ def list_tool(store: WorkspaceStore) -> ListWorkspacesTool:
 
 
 @pytest.fixture
-def manage_tool(store: WorkspaceStore) -> ManageWorkspaceTool:
-    return ManageWorkspaceTool(store=store)
+def manage_tool(store: WorkspaceStore, tmp_path: Path) -> ManageWorkspaceTool:
+    base = tmp_path / "workspaces"
+    base.mkdir(exist_ok=True)
+    return ManageWorkspaceTool(store=store, workspaces_base_dir=base)
 
 
 # ---------------------------------------------------------------------------
@@ -65,12 +67,13 @@ async def test_list_shows_trust_level(
 async def test_add_registers_workspace(
     manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
 ) -> None:
-    local_path = str(tmp_path)
+    local_path = tmp_path / "workspaces" / "proj1"
+    local_path.mkdir(parents=True, exist_ok=True)
     result = await manage_tool.execute(
         action="add",
         workspace_id="proj1",
         name="Project One",
-        local_path=local_path,
+        local_path=str(local_path),
         language="python",
     )
     assert "proj1" in result or "Project One" in result or "added" in result.lower()
@@ -163,7 +166,7 @@ async def test_set_trust_unknown_workspace(manage_tool: ManageWorkspaceTool) -> 
 async def test_clone_runs_git_clone(
     manage_tool: ManageWorkspaceTool, tmp_path: Path
 ) -> None:
-    dest = tmp_path / "cloned"
+    dest = tmp_path / "workspaces" / "cloned"
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
         proc.returncode = 0
@@ -189,7 +192,7 @@ async def test_clone_runs_git_clone(
 async def test_clone_git_failure_returns_error(
     manage_tool: ManageWorkspaceTool, tmp_path: Path
 ) -> None:
-    dest = tmp_path / "cloned"
+    dest = tmp_path / "workspaces" / "cloned"
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
         proc.returncode = 128
@@ -215,7 +218,7 @@ async def test_clone_git_failure_returns_error(
 async def test_init_creates_directory_and_registers(
     manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
 ) -> None:
-    new_dir = tmp_path / "brand_new_project"
+    new_dir = tmp_path / "workspaces" / "brand_new_project"
     assert not new_dir.exists()
 
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
@@ -249,8 +252,8 @@ async def test_init_creates_directory_and_registers(
 async def test_init_existing_directory_ok(
     manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
 ) -> None:
-    existing = tmp_path / "existing"
-    existing.mkdir()
+    existing = tmp_path / "workspaces" / "existing"
+    existing.mkdir(parents=True, exist_ok=True)
 
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
@@ -273,7 +276,7 @@ async def test_init_existing_directory_ok(
 async def test_init_git_fail_returns_error(
     manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
 ) -> None:
-    new_dir = tmp_path / "fail_proj"
+    new_dir = tmp_path / "workspaces" / "fail_proj"
 
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
@@ -293,8 +296,8 @@ async def test_init_git_fail_returns_error(
 
 
 @pytest.mark.asyncio
-async def test_init_missing_workspace_id(manage_tool: ManageWorkspaceTool) -> None:
-    result = await manage_tool.execute(action="init", local_path="/tmp/x")
+async def test_init_missing_workspace_id(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
+    result = await manage_tool.execute(action="init", local_path=str(tmp_path / "workspaces" / "x"))
     assert "error" in result.lower() or "required" in result.lower()
 
 
@@ -309,6 +312,117 @@ async def test_unknown_action(manage_tool: ManageWorkspaceTool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# H-03: Path traversal prevention
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def manage_tool_with_base(store: WorkspaceStore, tmp_path: Path) -> ManageWorkspaceTool:
+    base = tmp_path / "workspaces"
+    base.mkdir()
+    return ManageWorkspaceTool(store=store, workspaces_base_dir=base)
+
+
+@pytest.mark.asyncio
+async def test_init_rejects_path_outside_base_dir(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """Paths outside the workspaces base dir must be rejected."""
+    outside = str(tmp_path / "outside_dir")
+    result = await manage_tool_with_base.execute(
+        action="init",
+        workspace_id="evil",
+        local_path=outside,
+    )
+    assert "error" in result.lower()
+    assert "outside" in result.lower() or "traversal" in result.lower() or "allowed" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_init_rejects_dotdot_traversal(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """../traversal paths must be rejected."""
+    base = tmp_path / "workspaces"
+    traversal = str(base / ".." / "etc" / "evil")
+    result = await manage_tool_with_base.execute(
+        action="init",
+        workspace_id="evil",
+        local_path=traversal,
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_init_rejects_symlink_escape(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """Symlink that resolves outside the base dir must be rejected."""
+    base = tmp_path / "workspaces"
+    outside = tmp_path / "outside_target"
+    outside.mkdir()
+    link = base / "sneaky_link"
+    link.symlink_to(outside)
+    result = await manage_tool_with_base.execute(
+        action="init",
+        workspace_id="evil",
+        local_path=str(link / "project"),
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_init_allows_valid_path_inside_base(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """Valid path inside the base dir should succeed."""
+    base = tmp_path / "workspaces"
+    valid_path = str(base / "my_project")
+    with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        mock_exec.return_value = proc
+
+        result = await manage_tool_with_base.execute(
+            action="init",
+            workspace_id="good",
+            name="Good Project",
+            local_path=valid_path,
+        )
+    assert "error" not in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_rejects_path_outside_base_dir(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """Add should also validate that local_path is within base dir."""
+    outside = tmp_path / "outside_dir"
+    outside.mkdir()
+    result = await manage_tool_with_base.execute(
+        action="add",
+        workspace_id="evil",
+        local_path=str(outside),
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_clone_rejects_path_outside_base_dir(
+    manage_tool_with_base: ManageWorkspaceTool, tmp_path: Path
+) -> None:
+    """Clone destination outside the base dir must be rejected."""
+    outside = str(tmp_path / "outside_clone")
+    result = await manage_tool_with_base.execute(
+        action="clone",
+        workspace_id="evil",
+        git_remote="https://github.com/user/repo",
+        local_path=outside,
+    )
+    assert "error" in result.lower()
+
+
+# ---------------------------------------------------------------------------
 # ManageWorkspaceTool — clone URL validation + trust cap
 # ---------------------------------------------------------------------------
 
@@ -318,7 +432,7 @@ async def test_clone_rejects_ftp_url(manage_tool: ManageWorkspaceTool, tmp_path:
         action="clone",
         workspace_id="bad",
         git_remote="ftp://example.com/repo.git",
-        local_path=str(tmp_path / "dest"),
+        local_path=str(tmp_path / "workspaces" / "dest"),
     )
     assert "error" in result.lower()
     assert "https" in result.lower() or "git@" in result.lower()
@@ -330,7 +444,7 @@ async def test_clone_rejects_bare_path(manage_tool: ManageWorkspaceTool, tmp_pat
         action="clone",
         workspace_id="bad",
         git_remote="/home/user/local-repo",
-        local_path=str(tmp_path / "dest"),
+        local_path=str(tmp_path / "workspaces" / "dest"),
     )
     assert "error" in result.lower()
 
@@ -341,7 +455,7 @@ async def test_clone_rejects_file_scheme(manage_tool: ManageWorkspaceTool, tmp_p
         action="clone",
         workspace_id="bad",
         git_remote="file:///home/user/repo",
-        local_path=str(tmp_path / "dest"),
+        local_path=str(tmp_path / "workspaces" / "dest"),
     )
     assert "error" in result.lower()
 
@@ -351,7 +465,7 @@ async def test_clone_caps_trust_at_propose(
     manage_tool: ManageWorkspaceTool, store: WorkspaceStore, tmp_path: Path
 ) -> None:
     """Even if trust_level=4 is requested for clone, it's capped at PROPOSE (1)."""
-    dest = tmp_path / "cloned"
+    dest = tmp_path / "workspaces" / "cloned"
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
         proc.returncode = 0
@@ -374,7 +488,7 @@ async def test_clone_caps_trust_at_propose(
 @pytest.mark.asyncio
 async def test_clone_ssh_url_allowed(manage_tool: ManageWorkspaceTool, tmp_path: Path) -> None:
     """git@ SSH URLs should pass URL validation."""
-    dest = tmp_path / "ssh_clone"
+    dest = tmp_path / "workspaces" / "ssh_clone"
     with patch("src.tools.manage_workspace.asyncio.create_subprocess_exec") as mock_exec:
         proc = MagicMock()
         proc.returncode = 0

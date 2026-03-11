@@ -1,6 +1,7 @@
 """Post-session memory compactor — distills conversation into durable user facts."""
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 
@@ -147,15 +148,20 @@ class MemoryCompactor:
             merged_facts = new_facts
 
         # Rewrite facts.md atomically (write to tmp, then rename — crash-safe)
-        self._facts_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._facts_path.with_suffix(".tmp")
-        with tmp.open("w") as f:
-            for fact in merged_facts:
-                f.write(f"- {fact}\n")
-        tmp.replace(self._facts_path)  # atomic on POSIX
+        # Use to_thread to avoid blocking the event loop with synchronous file I/O
+        await asyncio.to_thread(self._write_facts, merged_facts)
 
         log.info("compaction_done", session_id=session_id, fact_count=len(merged_facts))
         return merged_facts
+
+    def _write_facts(self, facts: list[str]) -> None:
+        """Synchronous helper to write facts atomically — called via to_thread."""
+        self._facts_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._facts_path.with_suffix(".tmp")
+        with tmp.open("w") as f:
+            for fact in facts:
+                f.write(f"- {fact}\n")
+        tmp.replace(self._facts_path)  # atomic on POSIX
 
     async def clean_facts(self) -> bool:
         """Prune stale/duplicate facts from facts.md.
@@ -196,12 +202,14 @@ class MemoryCompactor:
             log.warning("facts_cleanup_empty_result")
             return False
 
-        tmp = self._facts_path.with_suffix(".tmp")
-        with tmp.open("w") as f:
-            for fact in cleaned:
-                f.write(f"- {fact}\n")
-        tmp.replace(self._facts_path)
+        def _write_and_mark() -> None:
+            tmp = self._facts_path.with_suffix(".tmp")
+            with tmp.open("w") as f:
+                for fact in cleaned:
+                    f.write(f"- {fact}\n")
+            tmp.replace(self._facts_path)
+            marker.write_text(str(time.time()))
 
-        marker.write_text(str(time.time()))
+        await asyncio.to_thread(_write_and_mark)
         log.info("facts_cleanup_done", before=existing_facts.count("\n") + 1, after=len(cleaned))
         return True

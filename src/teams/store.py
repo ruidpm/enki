@@ -1,6 +1,7 @@
 """SQLite-backed persistent team registry."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
@@ -12,6 +13,7 @@ class TeamsStore:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._lock = asyncio.Lock()
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -161,6 +163,72 @@ class TeamsStore:
     def all_team_stats(self) -> list[dict[str, Any]]:
         teams = self.list_teams()
         return [self.team_stats(t["team_id"]) for t in teams]
+
+    # ------------------------------------------------------------------
+    # Async wrappers — protect concurrent access with asyncio.Lock
+    # ------------------------------------------------------------------
+
+    async def create_team_async(
+        self,
+        team_id: str,
+        name: str,
+        role: str,
+        tools: list[str],
+        monthly_token_budget: int = 100_000,
+    ) -> None:
+        async with self._lock:
+            self.create_team(team_id, name, role, tools, monthly_token_budget)
+
+    async def get_team_async(self, team_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            return self.get_team(team_id)
+
+    async def list_teams_async(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.list_teams()
+
+    async def update_team_async(
+        self,
+        team_id: str,
+        name: str | None = None,
+        role: str | None = None,
+        tools: list[str] | None = None,
+        monthly_token_budget: int | None = None,
+    ) -> bool:
+        async with self._lock:
+            return self.update_team(team_id, name, role, tools, monthly_token_budget)
+
+    async def deactivate_team_async(self, team_id: str) -> None:
+        async with self._lock:
+            self.deactivate_team(team_id)
+
+    async def log_task_async(
+        self,
+        team_id: str,
+        task: str,
+        result: str,
+        *,
+        tokens_used: int,
+        success: bool,
+        duration_s: float,
+    ) -> None:
+        async with self._lock:
+            self.log_task(
+                team_id, task, result,
+                tokens_used=tokens_used, success=success, duration_s=duration_s,
+            )
+
+    async def monthly_tokens_used_async(self, team_id: str) -> int:
+        async with self._lock:
+            return self.monthly_tokens_used(team_id)
+
+    async def team_stats_async(self, team_id: str) -> dict[str, Any]:
+        async with self._lock:
+            return self.team_stats(team_id)
+
+    async def all_team_stats_async(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.all_team_stats()
 
     @staticmethod
     def _row_to_team(row: sqlite3.Row) -> dict[str, Any]:

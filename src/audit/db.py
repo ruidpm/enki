@@ -1,6 +1,7 @@
 """Audit database — SQLite-backed, tiered storage."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Generator
@@ -47,6 +48,7 @@ class AuditDB:
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._path = db_path
+        self._tier1_lock = asyncio.Lock()
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
 
@@ -76,16 +78,17 @@ class AuditDB:
         full_data = {"event_type": event_type, "session_id": session_id,
                      "timestamp": timestamp, **data}
         data_hash = compute_data_hash(full_data)
-        with self._conn() as conn:
-            prev_hash = self._last_chain_hash(conn)
-            chain_hash = compute_chain_hash(prev_hash, data_hash)
-            conn.execute(
-                """INSERT INTO tier1
-                   (event_type, session_id, timestamp, data, data_hash, prev_chain_hash, chain_hash)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (event_type, session_id, timestamp, json.dumps(data, default=str),
-                 data_hash, prev_hash, chain_hash),
-            )
+        async with self._tier1_lock:
+            with self._conn() as conn:
+                prev_hash = self._last_chain_hash(conn)
+                chain_hash = compute_chain_hash(prev_hash, data_hash)
+                conn.execute(
+                    """INSERT INTO tier1
+                       (event_type, session_id, timestamp, data, data_hash, prev_chain_hash, chain_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (event_type, session_id, timestamp, json.dumps(data, default=str),
+                     data_hash, prev_hash, chain_hash),
+                )
 
     async def log_tier2(
         self, event_type: Tier2Event, session_id: str, data: dict[str, Any]
@@ -116,7 +119,7 @@ class AuditDB:
             await self.log_tier2(
                 Tier2Event.TOOL_CALLED,
                 session_id,
-                {"tool": tool_name},
+                {"tool": tool_name, "params": params},
             )
 
     def purge_old_tier2(self, days: int = 30) -> int:

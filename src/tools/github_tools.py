@@ -52,7 +52,7 @@ def _check_trust(workspace_id: str | None, workspace_store: object, required: in
     if not workspace_id:
         return None  # assistant repo — no trust restriction
     if workspace_store is None:
-        return None
+        return "[ERROR] Workspace store not configured but workspace_id was provided."
     from src.workspaces.store import TrustLevel, WorkspaceStore
     assert isinstance(workspace_store, WorkspaceStore)
     ws = workspace_store.get(workspace_id)

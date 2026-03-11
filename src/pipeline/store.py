@@ -1,6 +1,7 @@
 """Pipeline store — SQLite-backed persistence for structured engineering pipelines."""
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,7 @@ class PipelineStore:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._lock = asyncio.Lock()
         self._conn.executescript(_DDL)
         self._conn.commit()
 
@@ -161,3 +163,57 @@ class PipelineStore:
             (pipeline_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Async wrappers — protect concurrent access with asyncio.Lock
+    # ------------------------------------------------------------------
+
+    async def create_async(
+        self,
+        pipeline_id: str,
+        *,
+        workspace_id: str,
+        task: str,
+    ) -> None:
+        async with self._lock:
+            self.create(pipeline_id, workspace_id=workspace_id, task=task)
+
+    async def get_async(self, pipeline_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            return self.get(pipeline_id)
+
+    async def list_active_async(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.list_active()
+
+    async def list_all_async(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.list_all()
+
+    async def advance_stage_async(self, pipeline_id: str, stage: str) -> None:
+        async with self._lock:
+            self.advance_stage(pipeline_id, stage)
+
+    async def set_status_async(self, pipeline_id: str, status: str) -> None:
+        async with self._lock:
+            self.set_status(pipeline_id, status)
+
+    async def save_artifact_async(
+        self,
+        pipeline_id: str,
+        stage: str,
+        artifact_type: str,
+        content: str,
+    ) -> None:
+        async with self._lock:
+            self.save_artifact(pipeline_id, stage, artifact_type, content)
+
+    async def get_artifact_async(
+        self, pipeline_id: str, stage: str
+    ) -> dict[str, Any] | None:
+        async with self._lock:
+            return self.get_artifact(pipeline_id, stage)
+
+    async def list_artifacts_async(self, pipeline_id: str) -> list[dict[str, Any]]:
+        async with self._lock:
+            return self.list_artifacts(pipeline_id)

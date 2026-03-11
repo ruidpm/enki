@@ -42,6 +42,30 @@ class ScanResult:
     reason: str = ""
 
 
+# Exact paths (with src/ prefix) that are allowed to use subprocess.
+# Only the real tool files get the exception — proposed tools never do.
+_SUBPROCESS_ALLOWED_PATHS: frozenset[str] = frozenset({
+    "src/tools/restart.py",
+    "src/tools/claude_code.py",
+})
+
+# Protected basenames that must not be used by proposed tools
+PROTECTED_TOOL_NAMES: frozenset[str] = frozenset({
+    "restart", "claude_code",
+})
+
+
+def _is_subprocess_allowed(filename: str) -> bool:
+    """Check if filename is one of the protected files allowed to use subprocess.
+
+    Only exact known paths are allowed. Proposed tools (which use paths like
+    'tools/<name>.py' or '<proposed>') are never allowed.
+    """
+    # Normalize path separators
+    normalized = filename.replace("\\", "/")
+    return any(normalized.endswith(path) for path in _SUBPROCESS_ALLOWED_PATHS)
+
+
 class CodeScanner:
     """
     AST-based static analysis for agent-proposed tool code.
@@ -49,6 +73,18 @@ class CodeScanner:
     """
 
     def scan(self, code: str, filename: str = "<proposed>") -> ScanResult:
+        # Check for protected name collision (M-06)
+        basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+        stem = basename.removesuffix(".py")
+        if stem in PROTECTED_TOOL_NAMES and not _is_subprocess_allowed(filename):
+            return ScanResult(
+                blocked=True,
+                reason=(
+                    f"Tool name '{stem}' collides with a protected system tool. "
+                    f"Choose a different name."
+                ),
+            )
+
         # Regex pre-check for obfuscated patterns
         if _DANGEROUS_PATTERNS.search(code):
             return ScanResult(blocked=True, reason="Dangerous pattern detected (obfuscation attempt)")
@@ -77,10 +113,7 @@ class CodeScanner:
         # Attribute access: os.system, subprocess.run, etc.
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             qualified = f"{node.value.id}.{node.attr}"
-            _subprocess_allowed = ("restart.py", "claude_code.py")
-            if node.value.id == "subprocess" and any(
-                filename.endswith(f) for f in _subprocess_allowed
-            ):
+            if node.value.id == "subprocess" and _is_subprocess_allowed(filename):
                 return ScanResult(blocked=False)
             if node.value.id in BLOCKED_MODULES:
                 return ScanResult(blocked=True, reason=f"Blocked: '{qualified}'")
@@ -93,12 +126,10 @@ class CodeScanner:
         else:
             names = [node.module.split(".")[0]] if node.module else []
 
-        _subprocess_allowed = ("restart.py", "claude_code.py")
-
         for name in names:
             if name == "subprocess":
                 # Only allowed in tools/restart.py and tools/claude_code.py
-                if not any(filename.endswith(f) for f in _subprocess_allowed):
+                if not _is_subprocess_allowed(filename):
                     return ScanResult(
                         blocked=True,
                         reason=(

@@ -17,6 +17,10 @@ class LoopDetectorHook:
         self._counts: dict[str, dict[tuple[str, str], int]] = defaultdict(dict)
 
     def set_session(self, session_id: str) -> None:
+        # Purge stale sessions to prevent memory leak (M-02)
+        old_keys = [k for k in self._counts if k != session_id]
+        for k in old_keys:
+            del self._counts[k]
         self._current_session = session_id
 
     def on_user_message(self) -> None:

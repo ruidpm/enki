@@ -5,8 +5,12 @@ on: [pull_request, push]
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -19,3 +23,9 @@ jobs:
         run: mypy --strict src/
       - name: Lint
         run: ruff check .
+      - name: Format check
+        run: ruff format --check .
+      - name: Security audit (dependencies)
+        run: pip install pip-audit && pip-audit
+      - name: Security scan (source)
+        run: pip install bandit && bandit -r src/ -ll

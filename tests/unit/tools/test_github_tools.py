@@ -175,3 +175,27 @@ async def test_commit_unknown_workspace_returns_error(workspace_store: Workspace
         workspace_id="ghost_ws", message="test", files=["."]
     )
     assert "error" in result.lower() or "not found" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# H-14: _check_trust must fail when store is None but workspace_id is given
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_check_trust_fails_when_store_is_none_but_workspace_id_given() -> None:
+    """When workspace_store is None but workspace_id is provided, must return error."""
+    tool = GitCommitTool(workspace_store=None)
+    result = await tool.execute(
+        workspace_id="some_ws", message="test", files=["."]
+    )
+    assert "error" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_check_trust_ok_when_store_none_and_no_workspace_id() -> None:
+    """No workspace_id + no store = assistant repo, should work fine."""
+    tool = GitStatusTool(workspace_store=None)
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
+               return_value=_mock_proc(0, "M file.py")):
+        result = await tool.execute()
+    assert "error" not in result.lower() or "file.py" in result

@@ -18,9 +18,9 @@ class RateLimiterHook:
     async def check(
         self, tool_name: str, params: dict[str, Any]
     ) -> tuple[bool, str | None]:
-        self._count += 1
-        if self._count > self._max:
+        if self._count >= self._max:
             return False, (
                 f"Rate limit: {self._count} tool calls this turn (max {self._max})"
             )
+        self._count += 1
         return True, None

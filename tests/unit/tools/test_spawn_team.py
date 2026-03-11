@@ -144,7 +144,7 @@ async def test_background_notifies_on_failure(tool: SpawnTeamTool, store: TeamsS
     assert stats["tasks_success"] == 0
     msg = notifier.send.call_args[0][0]
     assert "err1" in msg
-    assert "❌" in msg
+    assert "ERROR" in msg or "❌" in msg
 
 
 # ---------------------------------------------------------------------------

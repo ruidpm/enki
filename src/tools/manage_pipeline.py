@@ -10,12 +10,15 @@ Each stage must produce an artifact before the user can advance to the next.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.workspaces.store import WorkspaceStore
+
+if TYPE_CHECKING:
+    from src.jobs import JobRegistry
 
 log = structlog.get_logger()
 
@@ -71,7 +74,7 @@ class ManagePipelineTool:
         self,
         pipeline_store: PipelineStore,
         workspace_store: WorkspaceStore,
-        job_registry: object = None,
+        job_registry: JobRegistry | None = None,
     ) -> None:
         self._pipelines = pipeline_store
         self._workspaces = workspace_store
@@ -192,8 +195,6 @@ class ManagePipelineTool:
         self._pipelines.set_status(pipeline_id, PipelineStatus.ABORTED)
         killed = False
         if self._job_registry is not None:
-            from src.jobs import JobRegistry
-            assert isinstance(self._job_registry, JobRegistry)
             killed = self._job_registry.cancel(pipeline_id)
         log.info("pipeline_aborted", pipeline_id=pipeline_id, task_cancelled=killed)
         return (

@@ -26,6 +26,7 @@ class SubAgentRunner:
         system_prefix: str = "",
         label: str = "",  # e.g. "researcher/research" — shown in logs
         on_tokens: Callable[[int, int], None] | None = None,
+        on_cost: Callable[[int, int, float], None] | None = None,
     ) -> None:
         self._config = config
         self._tools = tools
@@ -35,6 +36,7 @@ class SubAgentRunner:
         self._system_prefix = system_prefix
         self._label = label
         self._on_tokens = on_tokens
+        self._on_cost = on_cost
         self._client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key)
 
     def _tool_defs(self) -> list[dict[str, Any]]:
@@ -74,6 +76,10 @@ class SubAgentRunner:
             total_tokens += step_in + step_out
             if self._on_tokens is not None:
                 self._on_tokens(step_in, step_out)
+            if self._on_cost is not None:
+                from src.costs import model_cost_usd
+                cost = model_cost_usd(self._model, step_in, step_out)
+                self._on_cost(step_in, step_out, cost)
 
             # Collect tool use blocks
             tool_uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
@@ -114,5 +120,13 @@ class SubAgentRunner:
                 tools=[tu.name for tu in tool_uses],
             )
 
-        log.warning("sub_agent_max_steps", label=self._label or "sub_agent", steps=self._max_steps)
-        return f"[SUB-AGENT:{self._label or '?'}] Max steps ({self._max_steps}) reached.", total_tokens
+        log.warning(
+            "sub_agent_max_steps",
+            label=self._label or "sub_agent",
+            steps=self._max_steps,
+            total_tokens=total_tokens,
+        )
+        return (
+            f"[INCOMPLETE: max steps reached] Sub-agent '{self._label or '?'}' "
+            f"hit the {self._max_steps}-step limit. Results may be partial."
+        ), total_tokens

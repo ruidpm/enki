@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     max_autonomous_turns: int = Field(default=10, ge=1)
     session_timeout_hours: float = Field(default=8.0, gt=0)
     loop_detection_threshold: int = Field(default=3, ge=2)
+    max_context_tokens: int = Field(default=120_000, ge=1000)
 
     # Model routing
     default_model: str = "claude-sonnet-4-6"

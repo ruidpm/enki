@@ -1,11 +1,10 @@
 """Send a proactive message to the user mid-turn."""
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
-
-class Notifier(Protocol):
-    async def send(self, message: str) -> None: ...
+if TYPE_CHECKING:
+    from src.interfaces.notifier import Notifier
 
 
 class SendMessageTool:
@@ -15,7 +14,7 @@ class SendMessageTool:
         "Use before starting any task that requires 2+ tool calls or takes time: "
         "send a one-line ack first ('Searching now.' / 'On it.' / 'Pipeline starting.'), "
         "then do the work, then return the full answer normally. "
-        "Do NOT use for the final answer — just return that normally."
+        "Do NOT use for the final answer -- just return that normally."
     )
     input_schema: dict[str, Any] = {
         "type": "object",

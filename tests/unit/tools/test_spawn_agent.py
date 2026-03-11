@@ -117,10 +117,16 @@ async def test_concurrent_limit_blocks_excess_spawns(
     config: MagicMock, registry: dict
 ) -> None:
     tool = SpawnAgentTool(config=config, tool_registry=registry)
-    tool._active = 5  # simulate max active
+    # Exhaust all semaphore slots to simulate max active
+    for _ in range(5):
+        await tool._semaphore.acquire()
 
     result = await tool.execute(task="task", tools=["web_search"])
     assert "BLOCKED" in result or "limit" in result.lower()
+
+    # Release slots to avoid resource leak in test
+    for _ in range(5):
+        tool._semaphore.release()
 
 
 # ---------------------------------------------------------------------------

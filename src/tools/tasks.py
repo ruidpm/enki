@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,35 @@ log = structlog.get_logger()
 
 # Permitted CLI binary — enforced by code_scanner allowlist
 _SQLITE = "sqlite3"
+
+# Whitelist of valid status values
+_VALID_STATUSES: frozenset[str] = frozenset({"open", "done"})
+
+# Pattern for valid due_date: YYYY-MM-DD only
+_DUE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _escape_sql_string(value: str) -> str:
+    """Escape a string for safe inclusion in single-quoted SQL literal.
+
+    Doubles single quotes (the only escape needed for SQLite string literals).
+    """
+    return value.replace("'", "''")
+
+
+def _validate_int_id(value: Any) -> int | None:
+    """Validate that value is (or can be safely parsed as) an integer.
+
+    Returns the integer on success, None on failure.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
 
 
 async def _run(db_path: Path, sql: str, json_mode: bool = False) -> str:
@@ -71,49 +101,74 @@ class TasksTool:
         action = kwargs["action"]
 
         if action == "list":
-            status_filter = kwargs.get("status", "open")
-            rows = await _run(
-                self._db,
-                f"SELECT id, title, notes, status, due_date, created_at "
-                f"FROM tasks WHERE status = '{status_filter}' ORDER BY due_date, id;",
-                json_mode=True,
-            )
-            return rows or "[]"
-
+            return await self._list(**kwargs)
         if action == "create":
-            title = kwargs.get("title", "").replace("'", "''")
-            notes = kwargs.get("notes", "").replace("'", "''")
-            due = kwargs.get("due_date", "")
-            due_val = f"'{due}'" if due else "NULL"
-            await _run(
-                self._db,
-                f"INSERT INTO tasks (title, notes, due_date) VALUES ('{title}', '{notes}', {due_val});",
-            )
-            return f"Task created: {title}"
-
+            return await self._create(**kwargs)
         if action == "update":
-            task_id = kwargs["id"]
-            fields = []
-            if "title" in kwargs:
-                fields.append(f"title = '{str(kwargs['title']).replace(chr(39), chr(39)*2)}'")
-            if "notes" in kwargs:
-                fields.append(f"notes = '{str(kwargs['notes']).replace(chr(39), chr(39)*2)}'")
-            if "status" in kwargs:
-                fields.append(f"status = '{kwargs['status']}'")
-            if "due_date" in kwargs:
-                fields.append(f"due_date = '{kwargs['due_date']}'")
-            if not fields:
-                return "No fields to update."
-            fields.append("updated_at = datetime('now')")
-            await _run(
-                self._db,
-                f"UPDATE tasks SET {', '.join(fields)} WHERE id = {task_id};",
-            )
-            return f"Task {task_id} updated."
-
+            return await self._update(**kwargs)
         if action == "delete":
-            task_id = kwargs["id"]
-            await _run(self._db, f"DELETE FROM tasks WHERE id = {task_id};")
-            return f"Task {task_id} deleted."
-
+            return await self._delete(**kwargs)
         return f"Unknown action: {action}"
+
+    async def _list(self, **kwargs: Any) -> str:
+        status_filter = kwargs.get("status", "open")
+        if status_filter not in _VALID_STATUSES:
+            return f"[ERROR] Invalid status '{_escape_sql_string(str(status_filter))}'. Valid: open, done."
+        rows = await _run(
+            self._db,
+            f"SELECT id, title, notes, status, due_date, created_at "
+            f"FROM tasks WHERE status = '{status_filter}' ORDER BY due_date, id;",
+            json_mode=True,
+        )
+        return rows or "[]"
+
+    async def _create(self, **kwargs: Any) -> str:
+        title = _escape_sql_string(kwargs.get("title", ""))
+        notes = _escape_sql_string(kwargs.get("notes", ""))
+        due = kwargs.get("due_date", "")
+        if due:
+            due_escaped = _escape_sql_string(due)
+            due_val = f"'{due_escaped}'"
+        else:
+            due_val = "NULL"
+        await _run(
+            self._db,
+            f"INSERT INTO tasks (title, notes, due_date) VALUES ('{title}', '{notes}', {due_val});",
+        )
+        return f"Task created: {kwargs.get('title', '')}"
+
+    async def _update(self, **kwargs: Any) -> str:
+        raw_id = kwargs.get("id")
+        task_id = _validate_int_id(raw_id)
+        if task_id is None:
+            return f"[ERROR] Invalid task id '{raw_id}'. Must be an integer."
+
+        fields: list[str] = []
+        if "title" in kwargs:
+            fields.append(f"title = '{_escape_sql_string(str(kwargs['title']))}'")
+        if "notes" in kwargs:
+            fields.append(f"notes = '{_escape_sql_string(str(kwargs['notes']))}'")
+        if "status" in kwargs:
+            status = kwargs["status"]
+            if status not in _VALID_STATUSES:
+                return f"[ERROR] Invalid status '{_escape_sql_string(str(status))}'. Valid: open, done."
+            fields.append(f"status = '{status}'")
+        if "due_date" in kwargs:
+            due = _escape_sql_string(str(kwargs["due_date"]))
+            fields.append(f"due_date = '{due}'")
+        if not fields:
+            return "No fields to update."
+        fields.append("updated_at = datetime('now')")
+        await _run(
+            self._db,
+            f"UPDATE tasks SET {', '.join(fields)} WHERE id = {task_id};",
+        )
+        return f"Task {task_id} updated."
+
+    async def _delete(self, **kwargs: Any) -> str:
+        raw_id = kwargs.get("id")
+        task_id = _validate_int_id(raw_id)
+        if task_id is None:
+            return f"[ERROR] Invalid task id '{raw_id}'. Must be an integer."
+        await _run(self._db, f"DELETE FROM tasks WHERE id = {task_id};")
+        return f"Task {task_id} deleted."

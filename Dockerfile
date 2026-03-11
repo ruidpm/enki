@@ -47,4 +47,7 @@ RUN chmod +x entrypoint.sh && chown -R enki:enki /app
 
 USER enki
 
+HEALTHCHECK --interval=60s --timeout=5s --start-period=10s --retries=3 \
+    CMD pgrep -f "python main.py" > /dev/null || exit 1
+
 CMD ["./entrypoint.sh"]
