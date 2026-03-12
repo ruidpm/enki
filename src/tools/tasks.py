@@ -118,7 +118,7 @@ class TasksTool:
         rows = await _run(
             self._db,
             f"SELECT id, title, notes, status, due_date, created_at "
-            f"FROM tasks WHERE status = '{status_filter}' ORDER BY due_date, id;",
+            f"FROM tasks WHERE status = '{status_filter}' ORDER BY due_date, id;",  # nosec B608 — whitelist-validated
             json_mode=True,
         )
         return rows or "[]"
@@ -134,7 +134,7 @@ class TasksTool:
             due_val = "NULL"
         await _run(
             self._db,
-            f"INSERT INTO tasks (title, notes, due_date) VALUES ('{title}', '{notes}', {due_val});",
+            f"INSERT INTO tasks (title, notes, due_date) VALUES ('{title}', '{notes}', {due_val});",  # nosec B608 — escaped
         )
         return f"Task created: {kwargs.get('title', '')}"
 
@@ -162,7 +162,7 @@ class TasksTool:
         fields.append("updated_at = datetime('now')")
         await _run(
             self._db,
-            f"UPDATE tasks SET {', '.join(fields)} WHERE id = {task_id};",
+            f"UPDATE tasks SET {', '.join(fields)} WHERE id = {task_id};",  # nosec B608 — escaped + validated int
         )
         return f"Task {task_id} updated."
 
@@ -171,5 +171,5 @@ class TasksTool:
         task_id = _validate_int_id(raw_id)
         if task_id is None:
             return f"[ERROR] Invalid task id '{raw_id}'. Must be an integer."
-        await _run(self._db, f"DELETE FROM tasks WHERE id = {task_id};")
+        await _run(self._db, f"DELETE FROM tasks WHERE id = {task_id};")  # nosec B608 — validated int
         return f"Task {task_id} deleted."

@@ -34,7 +34,7 @@ class AuditQuery:
             args.append(session_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._db._conn() as conn:
-            rows = conn.execute(f"SELECT * FROM tier1 {where} ORDER BY id ASC", args).fetchall()
+            rows = conn.execute(f"SELECT * FROM tier1 {where} ORDER BY id ASC", args).fetchall()  # nosec B608 — parameterized
         return [{**dict(row), "data": json.loads(row["data"])} for row in rows]
 
     def get_session_summary(self, session_id: str) -> dict[str, Any]:
@@ -55,7 +55,7 @@ class AuditQuery:
             clauses.append("timestamp >= ?")
             args.append(since.isoformat())
         with self._db._conn() as conn:
-            rows = conn.execute(f"SELECT data FROM tier2 WHERE {' AND '.join(clauses)}", args).fetchall()
+            rows = conn.execute(f"SELECT data FROM tier2 WHERE {' AND '.join(clauses)}", args).fetchall()  # nosec B608 — parameterized
         total_input = total_output = 0
         total_cost = 0.0
         by_model: dict[str, dict[str, Any]] = {}
