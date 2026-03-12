@@ -45,10 +45,12 @@ class Scheduler:
         agent: AgentProtocol,
         notifier: Notifier,
         store: ScheduleStore | None = None,
+        timezone: str = "UTC",
     ) -> None:
         self._agent = agent
         self._notifier = notifier
         self._store = store
+        self._tz = timezone
         self._scheduler = AsyncIOScheduler()
         self.jobs: dict[str, ScheduledJob] = {}
 
@@ -83,6 +85,7 @@ class Scheduler:
                     day=dom,
                     month=month,
                     day_of_week=dow,
+                    timezone=self._tz,
                 ),
                 args=[job],
                 id=job.job_id,

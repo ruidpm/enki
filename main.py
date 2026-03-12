@@ -383,7 +383,7 @@ def telegram() -> None:
         for job in default_jobs():
             schedule_store.upsert(job.job_id, job.cron, job.prompt)
 
-    scheduler = Scheduler(agent=agent, notifier=bot, store=schedule_store)
+    scheduler = Scheduler(agent=agent, notifier=bot, store=schedule_store, timezone=config.timezone)
     scheduler.load_from_store()
 
     # Wire scheduler into manage_schedule tool

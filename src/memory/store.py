@@ -30,12 +30,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS turns_fts USING fts5(
     content_rowid='id'
 );
 
-CREATE TABLE IF NOT EXISTS embeddings (
-    id          INTEGER PRIMARY KEY,
-    turn_id     INTEGER NOT NULL REFERENCES turns(id),
-    embedding   BLOB NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS facts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     fact        TEXT NOT NULL,

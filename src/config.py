@@ -59,5 +59,8 @@ class Settings(BaseSettings):
     claude_code_cooldown_seconds: int = Field(default=300, ge=0)
     connectivity_timeout_seconds: int = Field(default=5, ge=1)
 
+    # Timezone — applied to all scheduled jobs
+    timezone: str = "UTC"
+
     # Feature flags
     debug_audit: bool = False
