@@ -453,7 +453,7 @@ def telegram() -> None:
         await _app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
         scheduler.start()
 
-        # Startup catch-up: notify if last_seen gap > 2 min (i.e. we were down)
+        # Startup catch-up: detect downtime and route awareness through the Agent
         try:
             if _LAST_SEEN_FILE.exists():
                 last_ts = int(_LAST_SEEN_FILE.read_text().strip())
@@ -462,7 +462,32 @@ def telegram() -> None:
                     from datetime import datetime
 
                     last_str = datetime.fromtimestamp(last_ts, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
-                    await bot.send(f"Enki restarted. Last seen: {last_str} ({gap // 60} min ago). Catching up.")
+                    now_str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+                    # Calculate missed jobs during the downtime window
+                    missed = scheduler.calculate_missed_jobs(since=last_ts)
+                    missed_section = ""
+                    if missed:
+                        missed_lines = []
+                        for m in missed:
+                            fire_str = datetime.fromtimestamp(m.expected_time, tz=UTC).strftime("%H:%M UTC")
+                            missed_lines.append(f"  - {fire_str} {m.job_id}")
+                        missed_section = "\n\nMissed scheduled jobs:\n" + "\n".join(missed_lines)
+
+                    # Route through Agent so Enki is genuinely aware of its own downtime
+                    downtime_msg = (
+                        f"SYSTEM: You were down from {last_str} to {now_str} ({gap // 60} minutes). "
+                        f"You just restarted.{missed_section}\n\n"
+                        f"Inform the user about the downtime. "
+                        f"If there are missed jobs, ask if they want you to run them now."
+                    )
+                    response = await agent.run_turn(downtime_msg)
+                    await bot.send(response)
+                    log.info(
+                        "downtime_awareness_routed",
+                        gap_minutes=gap // 60,
+                        missed_jobs=len(missed),
+                    )
         except Exception as exc:
             log.warning("startup_catchup_failed", error=str(exc))
 

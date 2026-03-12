@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import structlog
 from apscheduler.jobstores.base import JobLookupError  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from croniter import croniter  # type: ignore[import-untyped]
+
+from src.interfaces.agent_protocol import AgentProtocol
+from src.interfaces.notifier import Notifier
 
 if TYPE_CHECKING:
     from src.schedule.store import ScheduleStore
 
 log = structlog.get_logger()
-
-
-class SchedulerAgent(Protocol):
-    async def run_turn(self, user_message: str) -> str: ...
-
-
-class SchedulerNotifier(Protocol):
-    async def send(self, message: str) -> None: ...
 
 
 @dataclass
@@ -32,11 +29,21 @@ class ScheduledJob:
     enabled: bool = True
 
 
+@dataclass
+class MissedJob:
+    """A scheduled job that should have fired during a downtime window."""
+
+    job_id: str
+    cron: str
+    prompt: str
+    expected_time: int  # unix timestamp of when it should have fired
+
+
 class Scheduler:
     def __init__(
         self,
-        agent: SchedulerAgent,
-        notifier: SchedulerNotifier,
+        agent: AgentProtocol,
+        notifier: Notifier,
         store: ScheduleStore | None = None,
     ) -> None:
         self._agent = agent
@@ -105,6 +112,48 @@ class Scheduler:
                 self._scheduler.remove_job(job_id)
             except (JobLookupError, KeyError):
                 pass  # Already removed or never added
+
+    def calculate_missed_jobs(self, since: int) -> list[MissedJob]:
+        """Calculate which enabled jobs should have fired between `since` and now.
+
+        Uses croniter to iterate cron schedules and find firings that fell
+        within the downtime window [since, now].
+        """
+        now = int(datetime.now(tz=UTC).timestamp())
+        if since >= now:
+            return []
+
+        missed: list[MissedJob] = []
+        start_dt = datetime.fromtimestamp(since, tz=UTC)
+
+        for job in self.jobs.values():
+            if not job.enabled:
+                continue
+            cron = croniter(job.cron, start_dt)
+            while True:
+                next_fire = cron.get_next(datetime)
+                fire_ts = int(next_fire.timestamp())
+                if fire_ts > now:
+                    break
+                missed.append(
+                    MissedJob(
+                        job_id=job.job_id,
+                        cron=job.cron,
+                        prompt=job.prompt,
+                        expected_time=fire_ts,
+                    )
+                )
+
+        missed.sort(key=lambda m: m.expected_time)
+        return missed
+
+    async def run_job_now(self, job_id: str) -> bool:
+        """Run a job immediately (catch-up execution). Returns False if job not found."""
+        job = self.jobs.get(job_id)
+        if job is None:
+            return False
+        await self._run_job(job)
+        return True
 
     async def _run_job(self, job: ScheduledJob) -> None:
         log.info("job_running", job_id=job.job_id)
