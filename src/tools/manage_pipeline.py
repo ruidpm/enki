@@ -48,7 +48,7 @@ class ManagePipelineTool:
     name = "manage_pipeline"
     description = (
         "Manage structured engineering pipelines on external workspaces. "
-        "Actions: start | advance | abort | list | status. "
+        "Actions: start | advance | abort | list | status | pause | resume. "
         "A pipeline runs: RESEARCH → SCOPE → PLAN → IMPLEMENT → TEST → REVIEW → PR. "
         "Each stage must produce an artifact before advancing. "
         "Call 'advance' after reviewing the current stage's artifact to move forward."
@@ -58,7 +58,7 @@ class ManagePipelineTool:
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["start", "advance", "abort", "list", "status"],
+                "enum": ["start", "advance", "abort", "list", "status", "pause", "resume"],
             },
             "workspace_id": {"type": "string"},
             "pipeline_id": {"type": "string"},
@@ -89,10 +89,12 @@ class ManagePipelineTool:
             "abort": self._abort,
             "list": self._list,
             "status": self._status,
+            "pause": self._pause,
+            "resume": self._resume,
         }
         handler = dispatch.get(action)
         if handler is None:
-            return f"[ERROR] Unknown action '{action}'. Valid: start | advance | abort | list | status"
+            return f"[ERROR] Unknown action '{action}'. Valid: start | advance | abort | list | status | pause | resume"
         return await handler(**kwargs)
 
     # ------------------------------------------------------------------
@@ -196,6 +198,36 @@ class ManagePipelineTool:
             killed = self._job_registry.cancel(pipeline_id)
         log.info("pipeline_aborted", pipeline_id=pipeline_id, task_cancelled=killed)
         return f"Pipeline {pipeline_id} aborted." + (" Background task cancelled." if killed else "")
+
+    async def _pause(self, **kwargs: Any) -> str:
+        pipeline_id: str = kwargs.get("pipeline_id", "").strip()
+        if not pipeline_id:
+            return "[ERROR] pipeline_id is required."
+
+        p = self._pipelines.get(pipeline_id)
+        if p is None:
+            return f"[ERROR] Pipeline '{pipeline_id}' not found."
+        if p["status"] not in (PipelineStatus.ACTIVE,):
+            return f"[ERROR] Cannot pause pipeline '{pipeline_id}' — status is '{p['status']}'."
+
+        self._pipelines.set_status(pipeline_id, PipelineStatus.PAUSED)
+        log.info("pipeline_paused", pipeline_id=pipeline_id)
+        return f"Pipeline {pipeline_id} paused."
+
+    async def _resume(self, **kwargs: Any) -> str:
+        pipeline_id: str = kwargs.get("pipeline_id", "").strip()
+        if not pipeline_id:
+            return "[ERROR] pipeline_id is required."
+
+        p = self._pipelines.get(pipeline_id)
+        if p is None:
+            return f"[ERROR] Pipeline '{pipeline_id}' not found."
+        if p["status"] != PipelineStatus.PAUSED:
+            return f"[ERROR] Cannot resume pipeline '{pipeline_id}' — status is '{p['status']}'."
+
+        self._pipelines.set_status(pipeline_id, PipelineStatus.ACTIVE)
+        log.info("pipeline_resumed", pipeline_id=pipeline_id)
+        return f"Pipeline {pipeline_id} resumed — status is now active."
 
     async def _list(self, **kwargs: Any) -> str:
         pipelines = self._pipelines.list_active()

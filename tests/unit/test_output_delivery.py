@@ -153,3 +153,58 @@ class TestSendOutput:
         assert job is not None
         assert job["result_summary"] == "Summary text"
         assert job["gist_url"] == "https://gist.github.com/abc"
+
+
+class TestCreateMultiFileGist:
+    """Multi-file gist creation should write temp files and call gh CLI."""
+
+    @pytest.mark.asyncio
+    async def test_successful_multi_file_gist(self) -> None:
+        delivery = OutputDelivery(notifier=AsyncMock())
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"https://gist.github.com/multi123\n", b""))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            url = await delivery.create_multi_file_gist(
+                {"plan.md": "# Plan\nDo stuff", "code.py": "print('hi')"},
+                "Multi-file output",
+            )
+
+        assert url == "https://gist.github.com/multi123"
+        # Verify gh gist create was called with --desc and file paths
+        call_args = mock_exec.call_args[0]
+        assert call_args[0] == "gh"
+        assert call_args[1] == "gist"
+        assert call_args[2] == "create"
+        assert "--desc" in call_args
+        # Should have two file paths at the end
+        file_args = [a for a in call_args if a.endswith("plan.md") or a.endswith("code.py")]
+        assert len(file_args) == 2
+
+    @pytest.mark.asyncio
+    async def test_multi_file_gist_failure_returns_none(self) -> None:
+        delivery = OutputDelivery(notifier=AsyncMock())
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"auth failed"))
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            url = await delivery.create_multi_file_gist(
+                {"file.md": "content"},
+                "desc",
+            )
+
+        assert url is None
+
+    @pytest.mark.asyncio
+    async def test_multi_file_gist_exception_returns_none(self) -> None:
+        delivery = OutputDelivery(notifier=AsyncMock())
+
+        with patch("asyncio.create_subprocess_exec", side_effect=OSError("no gh")):
+            url = await delivery.create_multi_file_gist(
+                {"file.md": "content"},
+                "desc",
+            )
+
+        assert url is None

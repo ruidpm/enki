@@ -280,6 +280,10 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     pipeline_store = PipelineStore(pipeline_db_path)
     register(ManagePipelineTool(pipeline_store=pipeline_store, workspace_store=workspace_store, job_registry=job_registry))
     register(SavePipelineArtifactTool(pipeline_store=pipeline_store))
+
+    from src.tools.pipeline_status import PipelineStatusTool
+
+    register(PipelineStatusTool(pipeline_store=pipeline_store))
     _run_pipeline_tool = RunPipelineTool(
         notifier=_notifier_instance,
         pipeline_store=pipeline_store,

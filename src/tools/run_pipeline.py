@@ -27,6 +27,7 @@ from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
 from src.interfaces.notifier import Notifier
 from src.output_delivery import OutputDelivery
+from src.pipeline.gates import STAGE_GATES, GateVerdict, check_gate
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
@@ -72,7 +73,9 @@ _LLM_STAGES = {
 
 
 _CLARIFICATION_PREFIX = "CLARIFICATION_NEEDED:"
-_MAX_CLARIFICATION_ROUNDS = 2
+_MAX_CLARIFICATION_ROUNDS = 1
+
+_PAUSE_POLL_INTERVAL = 5  # seconds between pause-status checks
 
 
 def _branch_name(task: str, pipeline_id: str) -> str:
@@ -141,6 +144,8 @@ class RunPipelineTool:
         self._registry = tool_registry
         self._job_registry: JobRegistry | None = job_registry
         self._cost_guard: CostGuardHook | None = cost_guard
+        self._anthropic_client = anthropic_client
+        self._summary_model = summary_model
         self._output = OutputDelivery(
             notifier=notifier,
             anthropic_client=anthropic_client,
@@ -240,6 +245,9 @@ class RunPipelineTool:
 
         try:
             for stage in PipelineStage.ORDERED:
+                # Check if pipeline was paused externally
+                await self._wait_if_paused(pipeline_id, stage)
+
                 _update_stage(stage)
 
                 if stage == PipelineStage.IMPLEMENT:
@@ -258,16 +266,53 @@ class RunPipelineTool:
                         return
                     result = await self._run_pr(pipeline_id, task, workspace_path, artifacts)
                 else:
-                    result = await self._run_llm_stage(pipeline_id, stage, task, context, artifacts)
+                    result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
 
                 artifacts[stage] = result
                 self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
+
+                # Run quality gate and record result
+                gate_result = await check_gate(
+                    stage,
+                    result,
+                    client=self._anthropic_client,
+                    model=self._summary_model,
+                )
+                # Create gist for every artifact
+                gist_url = await self._output.create_gist(result, f"Pipeline {pipeline_id} — {stage.upper()}")
+                self._pipelines.update_artifact_gate(
+                    pipeline_id,
+                    stage,
+                    gate_verdict=gate_result.verdict,
+                    gate_score=gate_result.llm_score if gate_result.llm_score > 0 else None,
+                    gist_url=gist_url,
+                )
+
                 self._pipelines.advance_stage(
                     pipeline_id,
                     PipelineStage.next(stage) or stage,
                 )
 
-                await self._send_stage_output(pipeline_id, stage, result)
+                # Notify with gate status
+                gate_note = f" Gate: {gate_result.verdict.upper()}"
+                if gate_result.llm_score > 0:
+                    gate_note += f" (score: {gate_result.llm_score:.1f})"
+                await self._send_stage_output(pipeline_id, stage, result, gate_note=gate_note, gist_url=gist_url)
+
+                # SCOPE approval: always ask user to approve scope
+                if stage == PipelineStage.SCOPE:
+                    scope_approved = await self._scope_approval(pipeline_id, result)
+                    if scope_approved is False:
+                        self._pipelines.set_status(pipeline_id, PipelineStatus.ABORTED)
+                        _finish_job(success=False, error="User rejected scope")
+                        await self._notifier.send(f"[Pipeline {pipeline_id}] Aborted — scope not approved.")
+                        return
+                    if isinstance(scope_approved, str):
+                        # User provided feedback — re-run scope with feedback
+                        context += f"\n\n## User feedback on scope\n{scope_approved}"
+                        result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
+                        artifacts[stage] = result
+                        self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
 
         except asyncio.CancelledError:
             log.info("run_pipeline_cancelled", pipeline_id=pipeline_id)
@@ -284,19 +329,139 @@ class RunPipelineTool:
 
         self._pipelines.set_status(pipeline_id, PipelineStatus.COMPLETED)
         _finish_job(success=True)
-        pr_url = artifacts.get(PipelineStage.PR, "PR creation failed — check logs.")
-        await self._notifier.send(
-            f"[Pipeline {pipeline_id}] DONE. All stages complete.\nPR: {pr_url}\nReview and merge when ready."
+
+        # Combined multi-file gist with all artifacts
+        combined_gist = await self._output.create_multi_file_gist(
+            {f"{s}.md": content for s, content in artifacts.items()},
+            f"Pipeline {pipeline_id} — all artifacts",
         )
 
-    async def _send_stage_output(self, pipeline_id: str, stage: str, result: str) -> None:
-        """Send stage output to notifier. Long output → secret gist + Enki summary."""
-        await self._output.send_output(
-            pipeline_id,
-            result,
-            prefix=f"[Pipeline {pipeline_id}] {stage.upper()} complete.",
-            summary_context=f" Stage: {stage.upper()}.",
+        pr_url = artifacts.get(PipelineStage.PR, "PR creation failed — check logs.")
+        gist_note = f"\nAll artifacts: {combined_gist}" if combined_gist else ""
+        await self._notifier.send(
+            f"[Pipeline {pipeline_id}] DONE. All stages complete.\nPR: {pr_url}{gist_note}\nReview and merge when ready."
         )
+
+    async def _send_stage_output(
+        self,
+        pipeline_id: str,
+        stage: str,
+        result: str,
+        *,
+        gate_note: str = "",
+        gist_url: str | None = None,
+    ) -> None:
+        """Send stage output to notifier. Long output → summary + gist link."""
+        prefix = f"[Pipeline {pipeline_id}] {stage.upper()} complete.{gate_note}"
+        if gist_url and len(result) > self._output._gist_threshold:
+            # We already have a gist — just summarize and link
+            summary = await self._output._summarize(result, f" Stage: {stage.upper()}.")
+            summary = summary or result[:400]
+            await self._notifier.send(f"{prefix}\n{summary}\n\nFull report: {gist_url}")
+        else:
+            await self._notifier.send(f"{prefix}\n{result[:800]}")
+
+    async def _wait_if_paused(self, pipeline_id: str, stage: str) -> None:
+        """Block until pipeline status is no longer PAUSED."""
+        p = self._pipelines.get(pipeline_id)
+        if p and p["status"] == PipelineStatus.PAUSED:
+            await self._notifier.send(
+                f"[Pipeline {pipeline_id}] Paused before {stage.upper()}. Use manage_pipeline resume to continue."
+            )
+            while True:
+                await asyncio.sleep(_PAUSE_POLL_INTERVAL)
+                p = self._pipelines.get(pipeline_id)
+                if not p or p["status"] != PipelineStatus.PAUSED:
+                    break
+            if p and p["status"] == PipelineStatus.ABORTED:
+                raise asyncio.CancelledError()
+
+    async def _scope_approval(self, pipeline_id: str, scope_artifact: str) -> bool | str:
+        """Ask user to approve scope. Returns True, False, or feedback string."""
+        summary = await self._output._summarize(scope_artifact, " This is a project scope document.")
+        display = summary or scope_artifact[:600]
+        answer = await self._notifier.ask_free_text(
+            f"[Pipeline {pipeline_id}] SCOPE complete — please review:\n\n{display}\n\n"
+            f'Reply "approve" to proceed, or provide feedback to revise.',
+            timeout_s=600,
+        )
+        if answer is None:
+            # Timeout — pause instead of abort
+            self._pipelines.set_status(pipeline_id, PipelineStatus.PAUSED)
+            await self._notifier.send(
+                f"[Pipeline {pipeline_id}] Scope approval timed out — pipeline paused. "
+                f"Use manage_pipeline resume after reviewing."
+            )
+            # Wait for resume
+            await self._wait_if_paused(pipeline_id, PipelineStage.PLAN)
+            return True  # resumed means approved
+        if answer.strip().lower() == "approve":
+            return True
+        if answer.strip().lower() in ("no", "abort", "cancel"):
+            return False
+        return answer  # feedback string
+
+    async def _run_with_gate(
+        self,
+        pipeline_id: str,
+        stage: str,
+        task: str,
+        context: str,
+        artifacts: dict[str, str],
+    ) -> str:
+        """Run an LLM stage with quality gate check and retry on failure."""
+        result = await self._run_llm_stage(pipeline_id, stage, task, context, artifacts)
+
+        gate = STAGE_GATES.get(stage)
+        if gate is None or gate.max_retries == 0:
+            return result
+
+        gate_result = await check_gate(
+            stage,
+            result,
+            client=self._anthropic_client,
+            model=self._summary_model,
+        )
+
+        if gate_result.verdict == GateVerdict.PASS:
+            return result
+
+        # Retry once with gate feedback
+        log.info("pipeline_gate_retry", pipeline_id=pipeline_id, stage=stage, reason=gate_result.reason)
+        retry_context = (
+            f"\n\n## Quality gate feedback (retry)\n"
+            f"Your previous output was rejected: {gate_result.reason}\n"
+            f"Please address: {gate_result.retry_hint}"
+        )
+        result = await self._run_llm_stage(pipeline_id, stage, task, context + retry_context, artifacts)
+
+        gate_result = await check_gate(
+            stage,
+            result,
+            client=self._anthropic_client,
+            model=self._summary_model,
+        )
+
+        if gate_result.verdict == GateVerdict.PASS:
+            return result
+
+        # Retry exhausted — escalate to user
+        gist_url = await self._output.create_gist(result, f"Pipeline {pipeline_id} — {stage.upper()} (gate failed)")
+        gist_note = f"\nArtifact: {gist_url}" if gist_url else ""
+        answer = await self._notifier.ask_free_text(
+            f"[Pipeline {pipeline_id}] {stage.upper()} gate failed after retry.\n"
+            f"Reason: {gate_result.reason}{gist_note}\n\n"
+            f"Reply 'skip' to accept as-is, 'abort' to stop, or provide guidance for another attempt.",
+            timeout_s=600,
+        )
+
+        if answer is None or answer.strip().lower() == "abort":
+            raise RuntimeError(f"Stage {stage} gate failed — user aborted.")
+        if answer.strip().lower() == "skip":
+            return result
+        # User provided guidance — one more try
+        guidance_context = f"\n\n## User guidance\n{answer}"
+        return await self._run_llm_stage(pipeline_id, stage, task, context + guidance_context, artifacts)
 
     async def _run_llm_stage(
         self,

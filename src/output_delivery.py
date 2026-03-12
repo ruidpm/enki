@@ -7,6 +7,8 @@ Summarization uses a stateless Anthropic API call (no conversation pollution).
 from __future__ import annotations
 
 import asyncio
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -66,6 +68,38 @@ class OutputDelivery:
             )
         except Exception as exc:
             log.warning("gist_create_failed", error=str(exc))
+        return None
+
+    async def create_multi_file_gist(self, files: dict[str, str], description: str) -> str | None:
+        """Create a multi-file gist. files = {filename: content}. Returns URL or None."""
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                file_paths: list[str] = []
+                for filename, content in files.items():
+                    p = Path(tmpdir) / filename
+                    p.write_text(content)
+                    file_paths.append(str(p))
+
+                proc = await asyncio.create_subprocess_exec(
+                    "gh",
+                    "gist",
+                    "create",
+                    "--desc",
+                    description,
+                    *file_paths,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+                if proc.returncode == 0:
+                    return stdout.decode().strip()
+                log.warning(
+                    "multi_gist_create_failed",
+                    returncode=proc.returncode,
+                    stderr=stderr.decode().strip()[:300],
+                )
+        except Exception as exc:
+            log.warning("multi_gist_create_failed", error=str(exc))
         return None
 
     async def _summarize(self, text: str, context: str) -> str | None:

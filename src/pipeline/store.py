@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS pipeline_artifacts (
     stage         TEXT NOT NULL,
     artifact_type TEXT NOT NULL,
     content       TEXT NOT NULL,
+    gist_url      TEXT,
+    gate_verdict  TEXT,
+    gate_score    REAL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (pipeline_id, stage)
 );
@@ -68,6 +71,15 @@ class PipelineStore:
         self._lock = asyncio.Lock()
         self._conn.executescript(_DDL)
         self._conn.commit()
+
+        # Migration: add gate/gist columns to pipeline_artifacts
+        try:
+            self._conn.execute("SELECT gist_url FROM pipeline_artifacts LIMIT 0")
+        except sqlite3.OperationalError:
+            self._conn.execute("ALTER TABLE pipeline_artifacts ADD COLUMN gist_url TEXT")
+            self._conn.execute("ALTER TABLE pipeline_artifacts ADD COLUMN gate_verdict TEXT")
+            self._conn.execute("ALTER TABLE pipeline_artifacts ADD COLUMN gate_score REAL")
+            self._conn.commit()
 
     # ------------------------------------------------------------------
     # Pipeline
@@ -154,6 +166,25 @@ class PipelineStore:
         ).fetchone()
         return dict(row) if row else None
 
+    def update_artifact_gate(
+        self,
+        pipeline_id: str,
+        stage: str,
+        *,
+        gate_verdict: str,
+        gate_score: float | None = None,
+        gist_url: str | None = None,
+    ) -> None:
+        self._conn.execute(
+            """
+            UPDATE pipeline_artifacts
+            SET gate_verdict = ?, gate_score = ?, gist_url = ?
+            WHERE pipeline_id = ? AND stage = ?
+            """,
+            (gate_verdict, gate_score, gist_url, pipeline_id, stage),
+        )
+        self._conn.commit()
+
     def list_artifacts(self, pipeline_id: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT * FROM pipeline_artifacts WHERE pipeline_id = ? ORDER BY id",
@@ -208,6 +239,18 @@ class PipelineStore:
     async def get_artifact_async(self, pipeline_id: str, stage: str) -> dict[str, Any] | None:
         async with self._lock:
             return self.get_artifact(pipeline_id, stage)
+
+    async def update_artifact_gate_async(
+        self,
+        pipeline_id: str,
+        stage: str,
+        *,
+        gate_verdict: str,
+        gate_score: float | None = None,
+        gist_url: str | None = None,
+    ) -> None:
+        async with self._lock:
+            self.update_artifact_gate(pipeline_id, stage, gate_verdict=gate_verdict, gate_score=gate_score, gist_url=gist_url)
 
     async def list_artifacts_async(self, pipeline_id: str) -> list[dict[str, Any]]:
         async with self._lock:

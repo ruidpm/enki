@@ -10,16 +10,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.models import ModelId
+from src.pipeline.gates import GateResult, GateVerdict
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.teams.store import TeamsStore
 from src.tools.run_pipeline import RunPipelineTool
 from src.workspaces.store import WorkspaceStore
+
+# Auto-pass gate result for tests that don't test gate logic
+_GATE_PASS = GateResult(verdict=GateVerdict.PASS, reason="test", retry_hint="", structural_ok=True, llm_score=0.0)
 
 
 def _make_notifier(confirmed: bool = True) -> AsyncMock:
     n = AsyncMock()
     n.ask_single_confirm = AsyncMock(return_value=confirmed)
     n.send = AsyncMock()
+    n.ask_free_text = AsyncMock(return_value="approve")
     return n
 
 
@@ -225,7 +230,9 @@ async def test_background_saves_artifact_per_stage(
     with (
         patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
         patch("src.tools.run_pipeline.asyncio.create_subprocess_exec", return_value=mock_proc),
-        patch("src.tools.run_pipeline.asyncio.create_subprocess_exec", return_value=mock_proc),
+        patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
+        patch.object(tool._output, "create_gist", return_value=None),
+        patch.object(tool._output, "create_multi_file_gist", return_value=None),
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=(fake_result, 100))
@@ -268,6 +275,9 @@ async def test_background_sends_notification_per_stage(
     with (
         patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
         patch("src.tools.run_pipeline.asyncio.create_subprocess_exec", return_value=mock_proc),
+        patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
+        patch.object(tool._output, "create_gist", return_value=None),
+        patch.object(tool._output, "create_multi_file_gist", return_value=None),
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=("done", 50))
@@ -305,6 +315,9 @@ async def test_pipeline_marked_completed_on_success(
     with (
         patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
         patch("src.tools.run_pipeline.asyncio.create_subprocess_exec", return_value=mock_proc),
+        patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
+        patch.object(tool._output, "create_gist", return_value=None),
+        patch.object(tool._output, "create_multi_file_gist", return_value=None),
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=("done", 50))
