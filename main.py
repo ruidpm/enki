@@ -129,6 +129,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     from src.tools.manage_team import ManageTeamTool
     from src.tools.manage_workspace import ListWorkspacesTool, ManageWorkspaceTool
     from src.tools.notes import NotesTool
+    from src.tools.remember import ForgetTool, RememberTool
     from src.tools.remove_tool import RemoveToolTool
     from src.tools.restart import RequestRestartTool
     from src.tools.run_pipeline import RunPipelineTool
@@ -208,6 +209,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     )
 
     # Register all tools
+    register(RememberTool(facts_path=_facts_path))
+    register(ForgetTool(facts_path=_facts_path))
     register(TasksTool(config.tasks_db_path))
     register(WebSearchTool(config.brave_search_api_key))
     register(NotesTool(data_dir / "projects"))
@@ -331,6 +334,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         facts_path=_facts_path,
         model=config.haiku_model,
     )
+    # Wire compactor into agent so idle-timeout resets trigger fact distillation
+    agent.set_compactor(compactor)
 
     return BuildResult(
         agent=agent,

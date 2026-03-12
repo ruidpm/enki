@@ -92,9 +92,14 @@ class Agent:
         self._conversation: list[dict[str, Any]] = []
         self._last_activity: float = time.monotonic()
         self._run_lock = asyncio.Lock()
+        self._compactor: Any | None = None
 
         loop_detector.set_session(self._session_id)
         log.info("agent_init", session_id=self._session_id)
+
+    def set_compactor(self, compactor: Any) -> None:
+        """Inject compactor after construction (avoids circular deps)."""
+        self._compactor = compactor
 
     @property
     def session_id(self) -> str:
@@ -172,13 +177,31 @@ class Agent:
             )
 
     def new_session(self) -> None:
-        """Clear conversation history and start a fresh session."""
+        """Clear conversation history and start a fresh session.
+
+        If a compactor is wired, triggers background compaction for the old session
+        so facts are not lost on idle timeout resets.
+        """
+        old_session_id = self._session_id
         self._conversation.clear()
         self._session_id = str(uuid.uuid4())
         self._loop_detector.set_session(self._session_id)
         self._cost_guard.reset_session()
         self._last_activity = time.monotonic()
         log.info("agent_new_session", session_id=self._session_id)
+
+        if self._compactor is not None:
+            asyncio.create_task(self._compact_old_session(old_session_id))
+
+    async def _compact_old_session(self, session_id: str) -> None:
+        """Background compaction — errors are logged, never raised."""
+        compactor = self._compactor
+        if compactor is None:
+            return
+        try:
+            await compactor.compact_session(session_id)
+        except Exception as exc:
+            log.warning("background_compaction_failed", session_id=session_id, error=str(exc))
 
     def _model_for_tier(self, tier: ModelTier) -> str:
         return {
