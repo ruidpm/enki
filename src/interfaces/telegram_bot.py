@@ -30,13 +30,14 @@ _CONFIRM_TIMEOUT = 300  # seconds to wait for user response
 class TelegramBot:
     """Telegram bot — also implements EvolveNotifier, RestartNotifier, and ConfirmationGate protocols."""
 
-    def __init__(self, token: str, allowed_chat_id: str) -> None:
+    def __init__(self, token: str, allowed_chat_id: str, confirm_timeout: int = _CONFIRM_TIMEOUT) -> None:
         self._allowed_chat_id = int(allowed_chat_id)
         self._token = token
         self._pending: dict[str, asyncio.Future[bool]] = {}
         self._pending_question: asyncio.Future[str] | None = None
-        self._confirm_timeout: float = _CONFIRM_TIMEOUT
+        self._confirm_timeout: float = confirm_timeout
         self._agent: Any = None
+        self._job_registry: Any = None
         self._post_init_cb: Any = None
         self._post_shutdown_cb: Any = None
         self._turn_lock = asyncio.Lock()
@@ -48,11 +49,17 @@ class TelegramBot:
     def set_agent(self, agent: object) -> None:
         self._agent = agent
 
+    def set_job_registry(self, registry: object) -> None:
+        self._job_registry = registry
+
     def _register_handlers(self) -> None:
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("cost", self._cmd_cost))
         self._app.add_handler(CommandHandler("audit", self._cmd_audit))
         self._app.add_handler(CommandHandler("newsession", self._cmd_newsession))
+        self._app.add_handler(CommandHandler("help", self._cmd_help))
+        self._app.add_handler(CommandHandler("status", self._cmd_status))
+        self._app.add_handler(CommandHandler("memory", self._cmd_memory))
         self._app.add_handler(CallbackQueryHandler(self._on_callback))
         self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message, block=False))
         self._app.add_handler(MessageHandler(filters.VOICE, self._on_voice, block=False))
@@ -107,6 +114,56 @@ class TelegramBot:
         recent = events[-5:]
         lines = [f"[{e['timestamp'][:16]}] {e['event_type']}" for e in recent]
         await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+
+    async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        assert self._agent is not None
+        tools = self._agent.tool_names
+        lines = ["Available tools:"] + [f"- {t}" for t in tools]
+        lines.append("\nCommands: /start /cost /audit /newsession /help /status /memory")
+        await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+
+    async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        if self._job_registry is None:
+            await update.message.reply_text("No job registry configured.")  # type: ignore[union-attr]
+            return
+        running = self._job_registry.list_running()
+        if not running:
+            await update.message.reply_text("All idle — no running jobs.")  # type: ignore[union-attr]
+            return
+        lines = [f"{len(running)} running job(s):"]
+        for j in running:
+            elapsed = int(j.get("elapsed_s", 0))
+            lines.append(f"- [{j['job_id']}] {j['type']}: {j['description']} ({elapsed}s)")
+        await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+
+    async def _cmd_memory(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        assert self._agent is not None
+        # Extract query from message text: "/memory <query>" or just "/memory"
+        text = (update.message.text or "").strip()  # type: ignore[union-attr]
+        query = text[len("/memory") :].strip() if text.startswith("/memory") else ""
+        if query:
+            results = self._agent.memory.search_fts(query, limit=5)
+            if not results:
+                await update.message.reply_text(f"No memory matches for: {query}")  # type: ignore[union-attr]
+                return
+            lines = [f"Memory search: {query}"]
+            for r in results:
+                content = str(r.get("content", ""))[:200]
+                lines.append(f"- [{r.get('role', '?')}] {content}")
+            await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+        else:
+            facts = self._agent.memory.get_facts(limit=10)
+            if not facts:
+                await update.message.reply_text("No facts stored yet.")  # type: ignore[union-attr]
+                return
+            lines = ["Recent facts:"] + [f"- {f}" for f in facts]
+            await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
 
     async def _run_turn_with_typing(self, update: Update, content: str | list[dict[str, Any]]) -> None:
         """Run a turn with persistent typing indicator. update.message must be set."""

@@ -116,6 +116,14 @@ class Agent:
     def audit(self) -> AuditDB:
         return self._audit
 
+    @property
+    def tool_names(self) -> list[str]:
+        return sorted(self._tools.keys())
+
+    @property
+    def memory(self) -> MemoryStore:
+        return self._memory
+
     def _estimate_tokens(self) -> int:
         """Estimate total conversation tokens using chars/4 heuristic."""
         total_chars = 0

@@ -40,8 +40,8 @@ log = structlog.get_logger()
 _CLAUDE_BIN = "claude"
 _CLAUDE_FLAGS = ["--dangerously-skip-permissions", "-p"]
 
-_TIMEOUT_SECONDS = 600  # 10-minute hard cap per job
-_COOLDOWN_SECONDS = 300  # 5-minute minimum between spawns
+_DEFAULT_TIMEOUT = 600  # 10-minute hard cap per job
+_DEFAULT_COOLDOWN = 300  # 5-minute minimum between spawns
 
 # Language-specific rules injected into temp CLAUDE.md before CCC runs
 _LANG_RULES: dict[str, str] = {
@@ -146,11 +146,15 @@ class RunClaudeCodeTool:
         project_dir: Path,
         workspace_store: object = None,
         job_registry: object = None,
+        timeout_seconds: int = _DEFAULT_TIMEOUT,
+        cooldown_seconds: int = _DEFAULT_COOLDOWN,
     ) -> None:
         self._notifier = notifier
         self._project_dir = project_dir
         self._workspace_store = workspace_store
         self._job_registry = job_registry
+        self._timeout_seconds = timeout_seconds
+        self._cooldown_seconds = cooldown_seconds
         self._last_spawn: float = 0.0
         self._agent: AgentProtocol | None = None
 
@@ -165,8 +169,8 @@ class RunClaudeCodeTool:
 
         # Cooldown check
         elapsed = time.time() - self._last_spawn
-        if self._last_spawn > 0 and elapsed < _COOLDOWN_SECONDS:
-            remaining = int(_COOLDOWN_SECONDS - elapsed)
+        if self._last_spawn > 0 and elapsed < self._cooldown_seconds:
+            remaining = int(self._cooldown_seconds - elapsed)
             return f"[BLOCKED] Claude Code cooldown active — {remaining}s remaining."
 
         # Resolve workspace
@@ -273,14 +277,14 @@ class RunClaudeCodeTool:
             return
 
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT_SECONDS)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout_seconds)
         except TimeoutError:
             proc.kill()
             await proc.wait()
             log.error("claude_code_timeout", job_id=job_id)
             if claude_md_path and claude_md_path.exists():
                 claude_md_path.unlink()
-            await self._notifier.send(f"[Job {job_id}] TIMEOUT — exceeded {_TIMEOUT_SECONDS // 60} minutes. Process killed.")
+            await self._notifier.send(f"[Job {job_id}] TIMEOUT — exceeded {self._timeout_seconds // 60} minutes. Process killed.")
             return
         finally:
             # Always clean up temp CLAUDE.md

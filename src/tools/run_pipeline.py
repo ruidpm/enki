@@ -372,6 +372,7 @@ class RunPipelineTool:
                 config=self._config,
                 tools=subset,
                 model=self._config.haiku_model,
+                max_steps=getattr(self._config, "sub_agent_max_steps", 80),
                 system_prefix=team["role"],
                 label=f"{team_id}/{stage}",
                 on_tokens=_on_tokens,

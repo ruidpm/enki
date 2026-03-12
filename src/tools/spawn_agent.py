@@ -96,6 +96,7 @@ class SpawnAgentTool:
                 tools=subset,
                 model=model,
                 max_tokens=max_tokens,
+                max_steps=getattr(self._config, "sub_agent_max_steps", 80),
                 on_cost=_on_cost,
             )
             result, _tokens = await runner.run(task)

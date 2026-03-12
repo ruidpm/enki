@@ -18,7 +18,7 @@ import structlog
 
 log = structlog.get_logger()
 
-_COOLDOWN_SECONDS = 600  # 10-minute minimum between restarts
+_DEFAULT_COOLDOWN = 600  # 10-minute minimum between restarts
 
 
 def is_running_in_docker() -> bool:
@@ -47,8 +47,9 @@ class RequestRestartTool:
         "required": ["reason", "changes_summary"],
     }
 
-    def __init__(self, notifier: RestartNotifier) -> None:
+    def __init__(self, notifier: RestartNotifier, cooldown_seconds: int = _DEFAULT_COOLDOWN) -> None:
         self._notifier = notifier
+        self._cooldown_seconds = cooldown_seconds
         self._last_restart: float = 0.0  # instance-level only — no module global
 
     async def execute(self, **kwargs: Any) -> str:
@@ -57,8 +58,8 @@ class RequestRestartTool:
 
         # Cooldown check
         elapsed = time.time() - self._last_restart
-        if self._last_restart > 0 and elapsed < _COOLDOWN_SECONDS:
-            remaining = int(_COOLDOWN_SECONDS - elapsed)
+        if self._last_restart > 0 and elapsed < self._cooldown_seconds:
+            remaining = int(self._cooldown_seconds - elapsed)
             return f"[BLOCKED] Restart cooldown active — {remaining}s remaining."
 
         # Double confirmation

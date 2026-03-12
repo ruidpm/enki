@@ -51,5 +51,13 @@ class Settings(BaseSettings):
     imap_user: str | None = None
     imap_password: str | None = None
 
+    # Timeouts & limits (configurable — were previously hardcoded)
+    restart_cooldown_seconds: int = Field(default=600, ge=0)
+    confirm_timeout_seconds: int = Field(default=300, ge=1)
+    sub_agent_max_steps: int = Field(default=80, ge=1)
+    claude_code_timeout_seconds: int = Field(default=600, ge=10)
+    claude_code_cooldown_seconds: int = Field(default=300, ge=0)
+    connectivity_timeout_seconds: int = Field(default=5, ge=1)
+
     # Feature flags
     debug_audit: bool = False

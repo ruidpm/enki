@@ -204,6 +204,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         max_monthly_cost_usd=config.max_monthly_cost_usd,
         max_llm_calls_per_session=config.max_llm_calls_per_session,
         max_autonomous_turns=config.max_autonomous_turns,
+        notifier=_notifier_instance,
     )
 
     # Register all tools
@@ -218,7 +219,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     disabled_dir = Path(__file__).parent / "tools_disabled"
     register(ProposeTool(pending_dir=pending_dir, tools_dir=tools_dir, notifier=_notifier_instance))
     register(RemoveToolTool(tools_dir=tools_dir, disabled_dir=disabled_dir, registry=registry))
-    register(RequestRestartTool(notifier=_notifier_instance))
+    register(RequestRestartTool(notifier=_notifier_instance, cooldown_seconds=config.restart_cooldown_seconds))
     register(SendMessageTool(notifier=_notifier_instance))
     register(SpawnAgentTool(config=config, tool_registry=registry, cost_guard=cost_guard))
 
@@ -251,6 +252,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         project_dir=Path(__file__).parent,
         workspace_store=workspace_store,
         job_registry=job_registry,
+        timeout_seconds=config.claude_code_timeout_seconds,
+        cooldown_seconds=config.claude_code_cooldown_seconds,
     )
     register(_run_claude_code_tool)
 
@@ -362,7 +365,7 @@ def telegram() -> None:
 
     config = Settings()  # type: ignore[call-arg]
 
-    bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id)
+    bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id, confirm_timeout=config.confirm_timeout_seconds)
     result = _build_agent(notifier=bot)
     agent = result.agent
     compactor = result.compactor
@@ -370,6 +373,7 @@ def telegram() -> None:
     manage_schedule_tool = result.manage_schedule_tool
     job_registry = result.job_registry
     bot.set_agent(agent)
+    bot.set_job_registry(job_registry)
 
     # Seed default jobs on first run, then load all from store
     from src.schedule.store import ScheduleStore as _SS
@@ -413,7 +417,7 @@ def telegram() -> None:
             online = False
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(config.connectivity_timeout_seconds)
                 sock.connect(("8.8.8.8", 53))
                 sock.close()
                 online = True
@@ -451,6 +455,9 @@ def telegram() -> None:
                 BotCommand("newsession", "Clear conversation history, start fresh"),
                 BotCommand("cost", "Session token and cost usage"),
                 BotCommand("audit", "Last 5 security events"),
+                BotCommand("help", "List available tools and commands"),
+                BotCommand("status", "Show running background jobs"),
+                BotCommand("memory", "Search or list stored facts"),
             ]
         )
         await _app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
