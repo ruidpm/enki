@@ -20,6 +20,7 @@ import structlog
 
 from src.interfaces.agent_protocol import AgentProtocol
 from src.interfaces.notifier import Notifier
+from src.output_delivery import OutputDelivery
 
 # Files/dirs Claude Code must never modify when working on THIS assistant's repo.
 # Any violation is flagged loudly in the completion notification.
@@ -107,9 +108,6 @@ def _build_claude_md(language: str | None) -> str:
     return _BASE_CLAUDE_MD.format(lang_section=lang_section)
 
 
-_GIST_THRESHOLD = 500  # chars — above this, create a gist instead of dumping raw text
-
-
 class RunClaudeCodeTool:
     name = "run_claude_code"
     description = (
@@ -156,11 +154,11 @@ class RunClaudeCodeTool:
         self._timeout_seconds = timeout_seconds
         self._cooldown_seconds = cooldown_seconds
         self._last_spawn: float = 0.0
-        self._agent: AgentProtocol | None = None
+        self._output = OutputDelivery(notifier=notifier)
 
     def set_agent(self, agent: AgentProtocol) -> None:
         """Wire in the main agent for summarization. Called after Agent is built."""
-        self._agent = agent
+        self._output.set_agent(agent)
 
     async def execute(self, **kwargs: Any) -> str:
         task: str = kwargs["task"]
@@ -348,53 +346,9 @@ class RunClaudeCodeTool:
             self._job_registry.finish(job_id, success=True)
 
         full_output = f"{result}{diff_msg}"
-        await self._send_output(job_id, full_output)
-
-    async def _create_gist(self, content: str, description: str) -> str | None:
-        """Create a secret GitHub gist via gh CLI. Returns URL or None on failure."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "gh",
-                "gist",
-                "create",
-                "--secret",
-                "--desc",
-                description,
-                "--filename",
-                "output.md",
-                "-",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(input=content.encode()), timeout=30)
-            if proc.returncode == 0:
-                return stdout.decode().strip()
-        except Exception as exc:
-            log.warning("gist_create_failed", error=str(exc))
-        return None
-
-    async def _send_output(self, job_id: str, full_output: str) -> None:
-        """Send job output to notifier. Long output → secret gist + Enki summary."""
-        try:
-            if len(full_output) <= _GIST_THRESHOLD or self._agent is None:
-                await self._notifier.send(f"[Job {job_id}] Done:\n{full_output[:800]}")
-                return
-
-            gist_url = await self._create_gist(full_output, f"Enki job {job_id} output")
-            summary_prompt = (
-                f"Summarise the following Claude Code job output in 2-3 bullet points "
-                f"for a Telegram message. Be concise and focus on what changed.\n\n{full_output[:4000]}"
-            )
-            try:
-                summary = await self._agent.run_turn(summary_prompt)
-            except Exception as exc:
-                log.warning("gist_summary_failed", error=str(exc))
-                summary = full_output[:400]
-
-            if gist_url:
-                await self._notifier.send(f"[Job {job_id}] Done:\n{summary}\n\nFull report: {gist_url}")
-            else:
-                await self._notifier.send(f"[Job {job_id}] Done:\n{summary}\n\n(full output too long; gist creation failed)")
-        except Exception as exc:
-            log.error("claude_code_send_output_failed", job_id=job_id, error=str(exc))
+        await self._output.send_output(
+            job_id,
+            full_output,
+            prefix=f"[Job {job_id}] Done:",
+            summary_context=" Focus on what changed.",
+        )

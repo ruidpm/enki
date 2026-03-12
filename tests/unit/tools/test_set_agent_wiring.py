@@ -108,13 +108,13 @@ async def test_spawn_team_with_agent_routes_through_enki(
 
 
 # ---------------------------------------------------------------------------
-# RunClaudeCodeTool: without agent, sends raw output
+# RunClaudeCodeTool: without agent, OutputDelivery sends raw output
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_claude_code_no_agent_sends_raw_output() -> None:
-    """Without set_agent(), _send_output sends truncated raw text."""
+    """Without set_agent(), OutputDelivery sends truncated raw text."""
     notifier = MagicMock()
     notifier.send = AsyncMock()
     notifier.ask_single_confirm = AsyncMock(return_value=True)
@@ -123,9 +123,9 @@ async def test_claude_code_no_agent_sends_raw_output() -> None:
         notifier=notifier,
         project_dir=Path("/tmp/fake"),
     )
-    # Deliberately NOT calling set_agent()
+    # Deliberately NOT calling set_agent() — agent is None in OutputDelivery
 
-    await tool._send_output("job1", "Short output from CCC.")
+    await tool._output.send_output("job1", "Short output from CCC.", prefix="[Job job1] Done:")
 
     notifier.send.assert_awaited_once()
     msg = notifier.send.call_args[0][0]

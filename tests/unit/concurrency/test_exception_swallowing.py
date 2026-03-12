@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.teams.store import TeamsStore
-from src.tools.claude_code import RunClaudeCodeTool
 from src.tools.spawn_team import SpawnTeamTool
 
 # ---------------------------------------------------------------------------
@@ -88,37 +87,36 @@ async def test_spawn_team_no_agent_fallback_send_failure(teams_store: TeamsStore
 
 
 # ---------------------------------------------------------------------------
-# RunClaudeCodeTool — _send_output fallback failure must be caught
+# OutputDelivery — send_output fallback failure must be caught
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_claude_code_send_output_agent_summary_fails_and_notifier_fails(
-    tmp_path: Path,
-) -> None:
+async def test_output_delivery_agent_and_notifier_both_fail() -> None:
     """When agent.run_turn fails and notifier.send also fails, no exception escapes."""
+    from src.output_delivery import OutputDelivery
+
     notifier = MagicMock()
-    notifier.ask_single_confirm = AsyncMock(return_value=True)
     notifier.send = AsyncMock(side_effect=RuntimeError("telegram down"))
 
-    tool = RunClaudeCodeTool(notifier=notifier, project_dir=tmp_path)
     agent = AsyncMock()
     agent.run_turn = AsyncMock(side_effect=RuntimeError("agent crashed"))
-    tool.set_agent(agent)
+
+    delivery = OutputDelivery(notifier=notifier, agent=agent)
 
     # This must NOT raise
-    await tool._send_output("job1", "x" * 1000)
+    await delivery.send_output("job1", "x" * 1000)
 
 
 @pytest.mark.asyncio
-async def test_claude_code_send_output_short_notifier_fails(
-    tmp_path: Path,
-) -> None:
+async def test_output_delivery_short_notifier_fails() -> None:
     """When output is short and notifier.send fails, no exception escapes."""
+    from src.output_delivery import OutputDelivery
+
     notifier = MagicMock()
     notifier.send = AsyncMock(side_effect=RuntimeError("telegram down"))
 
-    tool = RunClaudeCodeTool(notifier=notifier, project_dir=tmp_path)
+    delivery = OutputDelivery(notifier=notifier)
 
     # This must NOT raise
-    await tool._send_output("job2", "short output")
+    await delivery.send_output("job2", "short output")
