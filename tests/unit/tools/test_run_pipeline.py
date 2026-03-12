@@ -92,6 +92,17 @@ def teams_store(tmp_path: Path) -> TeamsStore:
     return store
 
 
+def _make_single_shot_response(text: str = "Single-shot result.") -> MagicMock:
+    """Create a mock Anthropic API response for single-shot stages."""
+    from anthropic.types import TextBlock as _TB
+    from anthropic.types import Usage as _U
+
+    mock = MagicMock()
+    mock.content = [_TB(text=text, type="text")]
+    mock.usage = _U(input_tokens=500, output_tokens=200, cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    return mock
+
+
 def _make_tool(
     tmp_path: Path,
     pipeline_store: PipelineStore,
@@ -234,10 +245,12 @@ async def test_background_saves_artifact_per_stage(
         patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
         patch.object(tool._output, "create_gist", return_value=None),
         patch.object(tool._output, "create_multi_file_gist", return_value=None),
+        patch.object(tool, "_anthropic_client") as mock_client,
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=(fake_result, 100))
         MockRunner.return_value = runner_instance
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response(fake_result))
 
         await tool._run_background(
             pipeline_id=pipeline_id,
@@ -279,10 +292,12 @@ async def test_background_sends_notification_per_stage(
         patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
         patch.object(tool._output, "create_gist", return_value=None),
         patch.object(tool._output, "create_multi_file_gist", return_value=None),
+        patch.object(tool, "_anthropic_client") as mock_client,
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=("done", 50))
         MockRunner.return_value = runner_instance
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response("done"))
 
         await tool._run_background(
             pipeline_id=pipeline_id,
@@ -319,10 +334,12 @@ async def test_pipeline_marked_completed_on_success(
         patch("src.tools.run_pipeline.check_gate", return_value=_GATE_PASS),
         patch.object(tool._output, "create_gist", return_value=None),
         patch.object(tool._output, "create_multi_file_gist", return_value=None),
+        patch.object(tool, "_anthropic_client") as mock_client,
     ):
         runner_instance = AsyncMock()
         runner_instance.run = AsyncMock(return_value=("done", 50))
         MockRunner.return_value = runner_instance
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response("done"))
 
         await tool._run_background(
             pipeline_id=pipeline_id,
@@ -414,7 +431,7 @@ async def test_stage_clarification_single_round(
 
         result = await tool._run_llm_stage(
             pipeline_id=pipeline_id,
-            stage=PipelineStage.SCOPE,
+            stage=PipelineStage.RESEARCH,
             task="build an app",
             context="",
             artifacts={},
@@ -447,7 +464,7 @@ async def test_stage_clarification_timeout_raises(
         with pytest.raises(RuntimeError, match="timed out"):
             await tool._run_llm_stage(
                 pipeline_id=pipeline_id,
-                stage=PipelineStage.SCOPE,
+                stage=PipelineStage.RESEARCH,
                 task="build an app",
                 context="",
                 artifacts={},
@@ -476,7 +493,7 @@ async def test_stage_clarification_exceeds_max_rounds(
         with pytest.raises(RuntimeError, match="exceeded"):
             await tool._run_llm_stage(
                 pipeline_id=pipeline_id,
-                stage=PipelineStage.SCOPE,
+                stage=PipelineStage.RESEARCH,
                 task="build an app",
                 context="",
                 artifacts={},
@@ -512,6 +529,217 @@ async def test_stage_no_clarification_unaffected(
 
     assert result == "Research done: use JWT."
     notifier.ask_free_text.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Single-shot vs agentic stage modes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_scope_uses_single_shot_not_sub_agent(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """SCOPE is single-shot — should call Anthropic API directly, not SubAgentRunner."""
+    notifier = _make_notifier()
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store, notifier=notifier)
+
+    pipeline_id = "ss01"
+    pipeline_store.create(pipeline_id, workspace_id="ws1", task="build app")
+
+    with (
+        patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
+        patch.object(tool, "_anthropic_client") as mock_client,
+    ):
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response("## What Will Be Built\nA web app."))
+
+        result = await tool._run_llm_stage(
+            pipeline_id=pipeline_id,
+            stage="scope",
+            task="build app",
+            context="",
+            artifacts={"research": "Found that React + Supabase is best."},
+        )
+
+    # SubAgentRunner should NOT have been instantiated
+    MockRunner.assert_not_called()
+    # Direct API call should have been made
+    mock_client.messages.create.assert_called_once()
+    assert "What Will Be Built" in result
+
+
+@pytest.mark.asyncio
+async def test_plan_uses_single_shot(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """PLAN is single-shot."""
+    notifier = _make_notifier()
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store, notifier=notifier)
+
+    pipeline_id = "ss02"
+    pipeline_store.create(pipeline_id, workspace_id="ws1", task="build app")
+
+    with (
+        patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
+        patch.object(tool, "_anthropic_client") as mock_client,
+    ):
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response("## Files to Create\nsrc/main.py"))
+
+        result = await tool._run_llm_stage(
+            pipeline_id=pipeline_id,
+            stage="plan",
+            task="build app",
+            context="",
+            artifacts={"research": "R", "scope": "S"},
+        )
+
+    MockRunner.assert_not_called()
+    assert "Files to Create" in result
+
+
+@pytest.mark.asyncio
+async def test_research_uses_sub_agent_runner(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """RESEARCH is agentic — should use SubAgentRunner."""
+    notifier = _make_notifier()
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store, notifier=notifier)
+
+    pipeline_id = "ss03"
+    pipeline_store.create(pipeline_id, workspace_id="ws1", task="build app")
+
+    with patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner:
+        runner_instance = AsyncMock()
+        runner_instance.run = AsyncMock(return_value=("## Key Findings\nUse React.", 100))
+        MockRunner.return_value = runner_instance
+
+        result = await tool._run_llm_stage(
+            pipeline_id=pipeline_id,
+            stage="research",
+            task="build app",
+            context="",
+            artifacts={},
+        )
+
+    MockRunner.assert_called_once()
+    # Check max_steps matches stage config (10 for research)
+    call_kwargs = MockRunner.call_args[1]
+    assert call_kwargs["max_steps"] == 10
+    assert "Key Findings" in result
+
+
+@pytest.mark.asyncio
+async def test_single_shot_does_not_inject_ccc(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """Single-shot stages should not get run_code_task tool."""
+    notifier = _make_notifier()
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store, notifier=notifier)
+    # Simulate having a pipeline CCC instance
+    tool._pipeline_ccc = MagicMock()
+
+    pipeline_id = "ss04"
+    pipeline_store.create(pipeline_id, workspace_id="ws1", task="build app")
+
+    with patch.object(tool, "_anthropic_client") as mock_client:
+        mock_client.messages.create = AsyncMock(return_value=_make_single_shot_response("Scope doc."))
+
+        await tool._run_llm_stage(
+            pipeline_id=pipeline_id,
+            stage="scope",
+            task="build app",
+            context="",
+            artifacts={},
+        )
+
+    # The API call should NOT have tools parameter with run_code_task
+    call_kwargs = mock_client.messages.create.call_args[1]
+    assert "tools" not in call_kwargs or not call_kwargs.get("tools")
+
+
+# ---------------------------------------------------------------------------
+# Prompt structure tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildStagePrompt:
+    """Verify _build_stage_prompt returns structured section headers."""
+
+    def test_research_prompt_has_sections(self) -> None:
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        prompt = _build_stage_prompt("research", "build app", "", {})
+        assert "## Key Findings" in prompt
+        assert "## Recommended Approach" in prompt
+        assert "## Libraries and Dependencies" in prompt
+        assert "## Risks and Gotchas" in prompt
+
+    def test_scope_prompt_has_sections(self) -> None:
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        prompt = _build_stage_prompt("scope", "build app", "", {"research": "Found stuff."})
+        assert "## What Will Be Built" in prompt
+        assert "## Tech Stack and Rationale" in prompt
+        assert "## Acceptance Criteria" in prompt
+        assert "## Out of Scope" in prompt
+        assert "ONE response" in prompt
+
+    def test_plan_prompt_has_sections(self) -> None:
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        prompt = _build_stage_prompt("plan", "build app", "", {"research": "R", "scope": "S"})
+        assert "## Files to Create/Modify" in prompt
+        assert "## Implementation Steps" in prompt
+        assert "## Test Strategy" in prompt
+        assert "ONE response" in prompt
+
+    def test_test_prompt_has_sections(self) -> None:
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        prompt = _build_stage_prompt("test", "build app", "", {"implement": "done"})
+        assert "## Test Results" in prompt
+        assert "## Coverage" in prompt
+        assert "## Gaps and Missing Scenarios" in prompt
+
+    def test_review_prompt_has_sections(self) -> None:
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        prompt = _build_stage_prompt("review", "build app", "", {"plan": "P", "implement": "I", "test": "T"})
+        assert "## Deviations from Plan" in prompt
+        assert "## Quality Issues" in prompt
+        assert "## Go/No-Go Recommendation" in prompt
+        assert "ONE response" in prompt
+
+    def test_single_shot_gets_full_artifacts(self) -> None:
+        """Single-shot stages should NOT truncate prior artifacts."""
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        long_research = "A" * 5000
+        prompt = _build_stage_prompt("scope", "build app", "", {"research": long_research})
+        # Full 5000-char artifact should be in the prompt (not truncated to 1500)
+        assert long_research in prompt
+
+    def test_agentic_truncates_artifacts(self) -> None:
+        """Agentic stages should truncate prior artifacts."""
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        long_impl = "B" * 5000
+        prompt = _build_stage_prompt("test", "build app", "", {"implement": long_impl})
+        # Should be truncated to 800 chars
+        assert long_impl not in prompt
+        assert long_impl[:800] in prompt
 
 
 # ---------------------------------------------------------------------------

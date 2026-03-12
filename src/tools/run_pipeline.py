@@ -17,19 +17,24 @@ Design:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+import time
 import uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from src.constants import REQUIRES_CONFIRM
+from src.costs import model_cost_usd
 from src.guardrails.cost_guard import CostGuardHook
 from src.interfaces.notifier import Notifier
 from src.output_delivery import OutputDelivery
 from src.pipeline.gates import STAGE_GATES, GateResult, GateVerdict, check_gate
+from src.pipeline.stage_config import STAGE_CONFIGS
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
-from src.sub_agent import SubAgentRunner
+from src.sub_agent import StepRecord, SubAgentRunner
 from src.teams.store import TeamsStore
 from src.tools.pipeline_ccc import PipelineCCCTool
 from src.workspaces.store import WorkspaceStore
@@ -134,7 +139,7 @@ class RunPipelineTool:
         tool_registry: dict[str, Any],
         job_registry: JobRegistry | None = None,
         cost_guard: CostGuardHook | None = None,
-        anthropic_client: object = None,
+        anthropic_client: Any = None,
         summary_model: str = "",
     ) -> None:
         self._notifier = notifier
@@ -477,6 +482,128 @@ class RunPipelineTool:
         final_result = await self._run_llm_stage(pipeline_id, stage, task, context + guidance_context, artifacts)
         return final_result, _pass
 
+    def _resolve_model(self, tier: str) -> str:
+        """Resolve model tier string to actual model ID from config."""
+        if tier == "opus":
+            return str(self._config.opus_model)
+        return str(self._config.haiku_model)
+
+    def _make_on_step(self, pipeline_id: str, stage: str) -> Callable[[StepRecord], None]:
+        """Create an on_step callback that persists step data to the pipeline store."""
+
+        def _on_step(record: StepRecord) -> None:
+            tool_data = [{"name": t.name, "input": t.input_preview, "output": t.output_preview} for t in record.tools]
+            self._pipelines.save_step(
+                pipeline_id,
+                stage,
+                record.step_number,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                cost_usd=record.cost_usd,
+                tools_called_json=json.dumps(tool_data),
+                duration_ms=record.duration_ms,
+            )
+            log.info(
+                "pipeline_step_audit",
+                pipeline_id=pipeline_id,
+                stage=stage,
+                step=record.step_number,
+                input_tokens=record.input_tokens,
+                output_tokens=record.output_tokens,
+                cost_usd=round(record.cost_usd, 6),
+                tools=[t.name for t in record.tools],
+                duration_ms=record.duration_ms,
+            )
+
+        return _on_step
+
+    async def _run_single_shot(
+        self,
+        pipeline_id: str,
+        stage: str,
+        task: str,
+        context: str,
+        artifacts: dict[str, str],
+        stage_config: Any,
+    ) -> tuple[str, int]:
+        """Run a single-shot LLM stage — one API call, no tools, no loop."""
+        team_id = _STAGE_TEAM[stage]
+        team = self._teams.get_team(team_id)
+        role = team["role"] if team else ""
+
+        prompt = _build_stage_prompt(stage, task, context, artifacts)
+        model = self._resolve_model(stage_config.model_tier)
+
+        _base = (
+            "You are a helpful sub-agent. Complete the given task and return a concise result. "
+            "Plain text only — no markdown, no **bold**, no # headers, no bullet points with *, "
+            "no backtick code blocks."
+        )
+        system = ((role + "\n\n") if role else "") + _base
+
+        step_start = time.monotonic()
+        response = await self._anthropic_client.messages.create(
+            model=model,
+            max_tokens=stage_config.max_result_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        step_in = response.usage.input_tokens
+        step_out = response.usage.output_tokens
+        total_tokens = step_in + step_out
+        cost = model_cost_usd(model, step_in, step_out)
+        duration_ms = int((time.monotonic() - step_start) * 1000)
+
+        # Record tokens/cost
+        if self._job_registry is not None:
+            self._job_registry.add_tokens(pipeline_id, step_in, step_out)
+        if self._cost_guard is not None:
+            self._cost_guard.record_llm_call(step_in, step_out, cost)
+
+        # Record step audit
+        on_step = self._make_on_step(pipeline_id, stage)
+        on_step(
+            StepRecord(
+                step_number=1,
+                input_tokens=step_in,
+                output_tokens=step_out,
+                cost_usd=cost,
+                tools=[],
+                duration_ms=duration_ms,
+            )
+        )
+
+        # Extract text
+        from anthropic.types import TextBlock as _TextBlock
+
+        texts = [b.text for b in response.content if isinstance(b, _TextBlock)]
+        result = "\n".join(texts) if texts else "(no response)"
+
+        # Log team task
+        self._teams.log_task(
+            team_id=team_id,
+            task=prompt[:200],
+            result=result,
+            tokens_used=total_tokens,
+            success=True,
+            duration_s=duration_ms / 1000.0,
+        )
+
+        log.info(
+            "pipeline_stage_summary",
+            pipeline_id=pipeline_id,
+            stage=stage,
+            mode="single_shot",
+            model=model,
+            total_steps=1,
+            total_tokens=total_tokens,
+            total_cost_usd=round(cost, 6),
+            duration_s=round(duration_ms / 1000.0, 2),
+        )
+
+        return result, total_tokens
+
     async def _run_llm_stage(
         self,
         pipeline_id: str,
@@ -487,9 +614,27 @@ class RunPipelineTool:
     ) -> str:
         """Run a team LLM stage (research/scope/plan/test/review).
 
+        Single-shot stages (scope/plan/review) make one direct API call.
+        Agentic stages (research/test) use SubAgentRunner with tool access.
+
         If the stage outputs CLARIFICATION_NEEDED: the pipeline pauses, asks the user
         via the notifier, and re-runs the stage with the answers in context (max 2 rounds).
         """
+        stage_config = STAGE_CONFIGS.get(stage)
+
+        # Single-shot path: one API call, no tools, no loop
+        if stage_config is not None and stage_config.mode == "single_shot":
+            result, _tokens = await self._run_single_shot(
+                pipeline_id,
+                stage,
+                task,
+                context,
+                artifacts,
+                stage_config,
+            )
+            return result
+
+        # Agentic path: SubAgentRunner with tools
         team_id = _STAGE_TEAM[stage]
         team = self._teams.get_team(team_id)
         if team is None or not team["active"]:
@@ -497,11 +642,18 @@ class RunPipelineTool:
 
         allowed = set(team["tools"]) - {"spawn_team", "spawn_agent", "run_pipeline", "run_claude_code"} - REQUIRES_CONFIRM
         subset = {n: t for n, t in self._registry.items() if n in allowed}
-        # Inject sync CCC — sub-agents get blocking Claude Code instead of fire-and-forget
-        if self._pipeline_ccc is not None:
+        # Inject sync CCC only for agentic stages that allow tools
+        if self._pipeline_ccc is not None and (stage_config is None or stage_config.tools_allowed):
             subset["run_code_task"] = self._pipeline_ccc
 
+        max_steps = stage_config.max_steps if stage_config else 80
+        model = self._resolve_model(stage_config.model_tier) if stage_config else self._config.haiku_model
+        on_step_cb = self._make_on_step(pipeline_id, stage)
+
         extra_context = ""
+        stage_start = time.monotonic()
+        stage_tokens = 0
+
         for round_ in range(_MAX_CLARIFICATION_ROUNDS + 1):
             prompt = _build_stage_prompt(stage, task, context + extra_context, artifacts)
 
@@ -513,17 +665,29 @@ class RunPipelineTool:
                 if self._cost_guard is not None:
                     self._cost_guard.record_llm_call(inp, out, cost)
 
+            def _cancel_check(_pid: str = pipeline_id) -> bool:
+                p = self._pipelines.get(_pid)
+                return p is not None and p["status"] in (PipelineStatus.PAUSED, PipelineStatus.ABORTED)
+
             runner = SubAgentRunner(
                 config=self._config,
                 tools=subset,
-                model=self._config.haiku_model,
-                max_steps=getattr(self._config, "sub_agent_max_steps", 80),
+                model=model,
+                max_steps=max_steps,
                 system_prefix=team["role"],
                 label=f"{team_id}/{stage}",
                 on_tokens=_on_tokens,
                 on_cost=_on_cost,
+                on_step=on_step_cb,
+                cancel_check=_cancel_check,
             )
             result, tokens = await runner.run(prompt)
+            stage_tokens += tokens
+
+            # Handle cancellation during stage
+            if result.startswith("[CANCELLED]"):
+                raise asyncio.CancelledError(f"Stage {stage} cancelled: pipeline paused or aborted.")
+
             self._teams.log_task(
                 team_id=team_id,
                 task=prompt[:200],
@@ -532,11 +696,15 @@ class RunPipelineTool:
                 success=True,
                 duration_s=0.0,
             )
+
             log.info(
-                "pipeline_stage_done",
+                "pipeline_stage_summary",
                 pipeline_id=pipeline_id,
                 stage=stage,
-                tokens=tokens,
+                mode="agentic",
+                model=model,
+                total_tokens=stage_tokens,
+                duration_s=round(time.monotonic() - stage_start, 2),
                 clarification_round=round_,
             )
 
@@ -657,6 +825,13 @@ def _build_stage_prompt(
     context: str,
     artifacts: dict[str, str],
 ) -> str:
+    """Build the prompt for a pipeline stage.
+
+    Single-shot stages (SCOPE/PLAN/REVIEW) get full prior artifacts — no truncation.
+    Agentic stages (RESEARCH/TEST) get truncated artifacts to limit context growth.
+    """
+    is_single_shot = STAGE_CONFIGS.get(stage, None) is not None and STAGE_CONFIGS[stage].mode == "single_shot"
+
     parts = [f"## Task\n{task}"]
     if context:
         parts.append(f"## Context\n{context}")
@@ -664,52 +839,73 @@ def _build_stage_prompt(
     if stage == PipelineStage.RESEARCH:
         parts.append(
             "Research the best approach for implementing this task. "
-            "Cover: relevant libraries, patterns, real-world examples, gotchas. "
-            "End with a clear recommendation.\n\n"
+            "Use your tools to search for libraries, patterns, real-world examples, and gotchas.\n\n"
             "If the task description is too vague to research meaningfully, output ONLY "
             "the line 'CLARIFICATION_NEEDED:' followed by a numbered list of your questions. "
-            "Nothing else. Otherwise proceed with your research."
+            "Nothing else. Otherwise proceed with your research.\n\n"
+            "Structure your output with these exact sections:\n"
+            "## Key Findings\n"
+            "## Recommended Approach\n"
+            "## Libraries and Dependencies\n"
+            "## Risks and Gotchas"
         )
     elif stage == PipelineStage.SCOPE:
         if PipelineStage.RESEARCH in artifacts:
-            parts.append(f"## Research findings\n{artifacts[PipelineStage.RESEARCH][:1500]}")
+            _art = artifacts[PipelineStage.RESEARCH] if is_single_shot else artifacts[PipelineStage.RESEARCH][:1500]
+            parts.append(f"## Research findings\n{_art}")
         parts.append(
-            "You are the architect. Define the complete scope for this project.\n\n"
-            "If you genuinely need user input to proceed — e.g. what the app does, "
-            "which external services to integrate, specific business rules you cannot infer — "
-            "output ONLY the line 'CLARIFICATION_NEEDED:' followed by a numbered list of your questions. "
-            "Nothing else in your response.\n\n"
+            "You are the architect. You have ONE response to produce the complete scope.\n"
+            "Do NOT ask for tools or try to explore — use the research findings above.\n\n"
             "For decisions that do not require user input (stack choice, folder structure, "
             "auth library, database schema, API shape): make the call yourself and document it.\n\n"
-            "If you have enough context, produce the full scope artifact: "
-            "what will be built, tech stack with rationale, acceptance criteria, out-of-scope items."
+            "Structure your output with these exact sections:\n"
+            "## What Will Be Built\n"
+            "## Tech Stack and Rationale\n"
+            "## Acceptance Criteria\n"
+            "## Out of Scope"
         )
     elif stage == PipelineStage.PLAN:
         if PipelineStage.RESEARCH in artifacts:
-            parts.append(f"## Research\n{artifacts[PipelineStage.RESEARCH][:800]}")
+            _art = artifacts[PipelineStage.RESEARCH] if is_single_shot else artifacts[PipelineStage.RESEARCH][:800]
+            parts.append(f"## Research\n{_art}")
         if PipelineStage.SCOPE in artifacts:
-            parts.append(f"## Scope\n{artifacts[PipelineStage.SCOPE][:1000]}")
+            _art = artifacts[PipelineStage.SCOPE] if is_single_shot else artifacts[PipelineStage.SCOPE][:1000]
+            parts.append(f"## Scope\n{_art}")
         parts.append(
-            "Write a detailed implementation plan: files to create/modify, "
-            "interfaces, data models, test strategy (TDD). Concrete enough to execute."
+            "Write the implementation plan in ONE response. Use only the research and scope above.\n\n"
+            "Structure your output with these exact sections:\n"
+            "## Files to Create/Modify (with full paths)\n"
+            "## Interfaces and Data Models\n"
+            "## Implementation Steps (ordered)\n"
+            "## Test Strategy (TDD)"
         )
     elif stage == PipelineStage.TEST:
         if PipelineStage.IMPLEMENT in artifacts:
             parts.append(f"## Implementation summary\n{artifacts[PipelineStage.IMPLEMENT][:800]}")
         parts.append(
-            "Run the test suite, check coverage, identify gaps, add missing tests. "
-            "Report: coverage %, failing tests with root cause, missing scenarios."
+            "Run tests and report results. Use run_code_task to execute the test suite.\n\n"
+            "Structure your output with these exact sections:\n"
+            "## Test Results\n"
+            "## Coverage\n"
+            "## Gaps and Missing Scenarios"
         )
     elif stage == PipelineStage.REVIEW:
         if PipelineStage.PLAN in artifacts:
-            parts.append(f"## Original plan\n{artifacts[PipelineStage.PLAN][:600]}")
+            _art = artifacts[PipelineStage.PLAN] if is_single_shot else artifacts[PipelineStage.PLAN][:600]
+            parts.append(f"## Original plan\n{_art}")
         if PipelineStage.IMPLEMENT in artifacts:
-            parts.append(f"## Implementation\n{artifacts[PipelineStage.IMPLEMENT][:800]}")
+            _art = artifacts[PipelineStage.IMPLEMENT] if is_single_shot else artifacts[PipelineStage.IMPLEMENT][:800]
+            parts.append(f"## Implementation\n{_art}")
         if PipelineStage.TEST in artifacts:
-            parts.append(f"## Test results\n{artifacts[PipelineStage.TEST][:600]}")
+            _art = artifacts[PipelineStage.TEST] if is_single_shot else artifacts[PipelineStage.TEST][:600]
+            parts.append(f"## Test results\n{_art}")
         parts.append(
-            "Review the implementation against the plan. Note deviations, quality issues, "
-            "missing edge cases. Give a go/no-go recommendation for the PR."
+            "Review in ONE response. No tools needed — use the artifacts above.\n\n"
+            "Structure your output with these exact sections:\n"
+            "## Deviations from Plan\n"
+            "## Quality Issues\n"
+            "## Missing Edge Cases\n"
+            "## Go/No-Go Recommendation"
         )
 
     return "\n\n".join(parts)

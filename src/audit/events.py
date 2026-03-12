@@ -34,6 +34,7 @@ class Tier2Event(StrEnum):
     TOOL_CALLED = "TOOL_CALLED"
     CRON_TRIGGER = "CRON_TRIGGER"
     SUB_AGENT_SPAWN = "SUB_AGENT_SPAWN"
+    SUB_AGENT_STEP = "SUB_AGENT_STEP"
 
 
 @dataclass

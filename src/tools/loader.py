@@ -31,6 +31,7 @@ _SKIP_FILES = frozenset(
         "claude_code",
         "spawn_agent",
         "pipeline_ccc",
+        "inspect_pipeline",
     }
 )
 

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 import anthropic
@@ -16,6 +19,29 @@ log = structlog.get_logger()
 _MAX_STEPS = 80  # enough for multi-section plans and deep research
 _MAX_API_RETRIES = 3
 _RETRY_DELAYS = (1.0, 2.0, 4.0)
+_PREVIEW_CHARS = 500  # truncation limit for tool input/output previews
+_MAX_TOOL_RESULT_CHARS = 10_000  # cap tool output to prevent context bloat
+
+
+@dataclass(frozen=True)
+class ToolCallRecord:
+    """Record of a single tool invocation within a sub-agent step."""
+
+    name: str
+    input_preview: str  # first _PREVIEW_CHARS chars of JSON input
+    output_preview: str  # first _PREVIEW_CHARS chars of result
+
+
+@dataclass(frozen=True)
+class StepRecord:
+    """Audit record for a single sub-agent step (one API call + tool executions)."""
+
+    step_number: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    tools: list[ToolCallRecord] = field(default_factory=list)
+    duration_ms: int = 0
 
 
 class SubAgentRunner:
@@ -32,6 +58,9 @@ class SubAgentRunner:
         label: str = "",  # e.g. "researcher/research" — shown in logs
         on_tokens: Callable[[int, int], None] | None = None,
         on_cost: Callable[[int, int, float], None] | None = None,
+        on_step: Callable[[StepRecord], None] | None = None,
+        max_tool_result_chars: int = _MAX_TOOL_RESULT_CHARS,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> None:
         self._config = config
         self._tools = tools
@@ -42,6 +71,9 @@ class SubAgentRunner:
         self._label = label
         self._on_tokens = on_tokens
         self._on_cost = on_cost
+        self._on_step = on_step
+        self._max_tool_result_chars = max_tool_result_chars
+        self._cancel_check = cancel_check
         self._client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key)
 
     async def _api_call_with_retry(self, **kwargs: Any) -> anthropic.types.Message:
@@ -91,6 +123,13 @@ class SubAgentRunner:
         total_tokens = 0
 
         for step in range(self._max_steps):
+            # Check for cancellation before each step
+            if self._cancel_check is not None and self._cancel_check():
+                log.info("sub_agent_cancelled", label=self._label, step=step + 1)
+                return "[CANCELLED] Sub-agent stopped by cancel check.", total_tokens
+
+            step_start = time.monotonic()
+
             try:
                 response = await self._api_call_with_retry(
                     model=self._model,
@@ -105,19 +144,33 @@ class SubAgentRunner:
 
             step_in = response.usage.input_tokens
             step_out = response.usage.output_tokens
+            step_cost = 0.0
             total_tokens += step_in + step_out
             if self._on_tokens is not None:
                 self._on_tokens(step_in, step_out)
             if self._on_cost is not None:
                 from src.costs import model_cost_usd
 
-                cost = model_cost_usd(self._model, step_in, step_out)
-                self._on_cost(step_in, step_out, cost)
+                step_cost = model_cost_usd(self._model, step_in, step_out)
+                self._on_cost(step_in, step_out, step_cost)
 
             # Collect tool use blocks
             tool_uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
 
             if response.stop_reason == "end_turn" or not tool_uses:
+                # Final step — record it before returning
+                duration_ms = int((time.monotonic() - step_start) * 1000)
+                if self._on_step is not None:
+                    self._on_step(
+                        StepRecord(
+                            step_number=step + 1,
+                            input_tokens=step_in,
+                            output_tokens=step_out,
+                            cost_usd=step_cost,
+                            tools=[],
+                            duration_ms=duration_ms,
+                        )
+                    )
                 texts = [b.text for b in response.content if isinstance(b, TextBlock)]
                 return "\n".join(texts) if texts else "(no response)", total_tokens
 
@@ -126,7 +179,9 @@ class SubAgentRunner:
 
             # Execute each tool and collect results
             tool_results: list[dict[str, Any]] = []
+            tool_call_records: list[ToolCallRecord] = []
             for tu in tool_uses:
+                input_preview = json.dumps(tu.input, default=str)[:_PREVIEW_CHARS]
                 tool = self._tools.get(tu.name)
                 if tool is None:
                     result_text = f"[ERROR] Tool '{tu.name}' not available in this sub-agent."
@@ -138,21 +193,49 @@ class SubAgentRunner:
                         result_text = f"[ERROR] {exc}"
                         log.error("sub_agent_tool_error", tool=tu.name, error=str(exc))
 
+                result_str = str(result_text)
+                if len(result_str) > self._max_tool_result_chars:
+                    result_str = result_str[: self._max_tool_result_chars] + "\n[TRUNCATED]"
+                tool_call_records.append(
+                    ToolCallRecord(
+                        name=tu.name,
+                        input_preview=input_preview,
+                        output_preview=result_str[:_PREVIEW_CHARS],
+                    )
+                )
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": tu.id,
-                        "content": str(result_text),
+                        "content": result_str,
                     }
                 )
 
             messages.append({"role": "user", "content": tool_results})
+
+            # Record step audit data
+            duration_ms = int((time.monotonic() - step_start) * 1000)
+            if self._on_step is not None:
+                self._on_step(
+                    StepRecord(
+                        step_number=step + 1,
+                        input_tokens=step_in,
+                        output_tokens=step_out,
+                        cost_usd=step_cost,
+                        tools=tool_call_records,
+                        duration_ms=duration_ms,
+                    )
+                )
+
             log.info(
                 "sub_agent_step",
                 label=self._label or "sub_agent",
                 step=step + 1,
                 tools_called=len(tool_uses),
                 tools=[tu.name for tu in tool_uses],
+                tool_inputs=[{tu.name: json.dumps(tu.input, default=str)[:120]} for tu in tool_uses],
+                step_tokens=step_in + step_out,
+                cumulative_tokens=total_tokens,
             )
 
         log.warning(

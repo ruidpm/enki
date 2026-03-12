@@ -123,6 +123,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         GitPushBranchTool,
         GitStatusTool,
     )
+    from src.tools.inspect_pipeline import InspectPipelineTool
     from src.tools.job_status import JobStatusTool
     from src.tools.loader import load_tools_from_dir
     from src.tools.manage_pipeline import ManagePipelineTool
@@ -305,6 +306,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     from src.tools.pipeline_status import PipelineStatusTool
 
     register(PipelineStatusTool(pipeline_store=pipeline_store))
+    register(InspectPipelineTool(pipeline_store=pipeline_store))
     _run_pipeline_tool = RunPipelineTool(
         notifier=_notifier_instance,
         pipeline_store=pipeline_store,

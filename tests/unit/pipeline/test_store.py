@@ -121,3 +121,86 @@ def test_list_artifacts(store: PipelineStore) -> None:
     store.save_artifact("p1", PipelineStage.SCOPE, "requirements", "S")
     arts = store.list_artifacts("p1")
     assert len(arts) == 2
+
+
+# ---------------------------------------------------------------------------
+# Pipeline steps (per-step audit)
+# ---------------------------------------------------------------------------
+
+
+def test_save_and_list_steps(store: PipelineStore) -> None:
+    store.create("p1", workspace_id="ws1", task="t")
+    store.save_step(
+        "p1",
+        "research",
+        1,
+        input_tokens=1000,
+        output_tokens=200,
+        cost_usd=0.01,
+        tools_called_json='[{"name":"web_search"}]',
+        duration_ms=500,
+    )
+    store.save_step(
+        "p1",
+        "research",
+        2,
+        input_tokens=1500,
+        output_tokens=300,
+        cost_usd=0.02,
+        tools_called_json='[{"name":"notes"}]',
+        duration_ms=300,
+    )
+
+    steps = store.list_steps("p1")
+    assert len(steps) == 2
+    assert steps[0]["step_number"] == 1
+    assert steps[0]["input_tokens"] == 1000
+    assert steps[1]["step_number"] == 2
+    assert steps[1]["cost_usd"] == pytest.approx(0.02)
+
+
+def test_list_steps_filter_by_stage(store: PipelineStore) -> None:
+    store.create("p1", workspace_id="ws1", task="t")
+    store.save_step(
+        "p1", "research", 1, input_tokens=100, output_tokens=50, cost_usd=0.001, tools_called_json="[]", duration_ms=100
+    )
+    store.save_step(
+        "p1", "scope", 1, input_tokens=200, output_tokens=100, cost_usd=0.002, tools_called_json="[]", duration_ms=200
+    )
+
+    research_steps = store.list_steps("p1", stage="research")
+    assert len(research_steps) == 1
+    assert research_steps[0]["stage"] == "research"
+
+    scope_steps = store.list_steps("p1", stage="scope")
+    assert len(scope_steps) == 1
+    assert scope_steps[0]["stage"] == "scope"
+
+
+def test_get_stage_summary(store: PipelineStore) -> None:
+    store.create("p1", workspace_id="ws1", task="t")
+    store.save_step(
+        "p1", "research", 1, input_tokens=1000, output_tokens=200, cost_usd=0.01, tools_called_json="[]", duration_ms=500
+    )
+    store.save_step(
+        "p1", "research", 2, input_tokens=1500, output_tokens=300, cost_usd=0.02, tools_called_json="[]", duration_ms=300
+    )
+
+    summary = store.get_stage_summary("p1", "research")
+    assert summary["total_steps"] == 2
+    assert summary["total_input_tokens"] == 2500
+    assert summary["total_output_tokens"] == 500
+    assert summary["total_cost_usd"] == pytest.approx(0.03)
+    assert summary["total_duration_ms"] == 800
+
+
+def test_get_stage_summary_empty(store: PipelineStore) -> None:
+    store.create("p1", workspace_id="ws1", task="t")
+    summary = store.get_stage_summary("p1", "research")
+    assert summary["total_steps"] == 0
+    assert summary["total_input_tokens"] == 0
+
+
+def test_list_steps_empty(store: PipelineStore) -> None:
+    store.create("p1", workspace_id="ws1", task="t")
+    assert store.list_steps("p1") == []

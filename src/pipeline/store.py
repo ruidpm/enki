@@ -58,6 +58,19 @@ CREATE TABLE IF NOT EXISTS pipeline_artifacts (
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (pipeline_id, stage)
 );
+
+CREATE TABLE IF NOT EXISTS pipeline_steps (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    pipeline_id   TEXT NOT NULL,
+    stage         TEXT NOT NULL,
+    step_number   INTEGER NOT NULL,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd      REAL NOT NULL DEFAULT 0.0,
+    tools_called  TEXT NOT NULL DEFAULT '[]',
+    duration_ms   INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -191,6 +204,71 @@ class PipelineStore:
             (pipeline_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Steps (per-step audit data)
+    # ------------------------------------------------------------------
+
+    def save_step(
+        self,
+        pipeline_id: str,
+        stage: str,
+        step_number: int,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        tools_called_json: str,
+        duration_ms: int,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO pipeline_steps
+                (pipeline_id, stage, step_number, input_tokens, output_tokens, cost_usd, tools_called, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (pipeline_id, stage, step_number, input_tokens, output_tokens, cost_usd, tools_called_json, duration_ms),
+        )
+        self._conn.commit()
+
+    def list_steps(self, pipeline_id: str, stage: str | None = None) -> list[dict[str, Any]]:
+        if stage is not None:
+            rows = self._conn.execute(
+                "SELECT * FROM pipeline_steps WHERE pipeline_id = ? AND stage = ? ORDER BY step_number",
+                (pipeline_id, stage),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM pipeline_steps WHERE pipeline_id = ? ORDER BY id",
+                (pipeline_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stage_summary(self, pipeline_id: str, stage: str) -> dict[str, Any]:
+        row = self._conn.execute(
+            """
+            SELECT
+                COUNT(*) as total_steps,
+                COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
+                COALESCE(SUM(duration_ms), 0) as total_duration_ms
+            FROM pipeline_steps
+            WHERE pipeline_id = ? AND stage = ?
+            """,
+            (pipeline_id, stage),
+        ).fetchone()
+        return (
+            dict(row)
+            if row
+            else {
+                "total_steps": 0,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_cost_usd": 0.0,
+                "total_duration_ms": 0,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Async wrappers — protect concurrent access with asyncio.Lock
