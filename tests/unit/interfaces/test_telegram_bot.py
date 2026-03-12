@@ -38,8 +38,10 @@ def bot(mock_app: MagicMock) -> TelegramBot:
 def agent() -> MagicMock:
     a = MagicMock()
     a.run_turn = AsyncMock(return_value="Hello back")
-    a._cost_guard = MagicMock(daily_cost_usd=0.01, monthly_cost_usd=0.05, session_tokens=500)
-    a._audit = MagicMock()
+    a.daily_cost_usd = 0.01
+    a.monthly_cost_usd = 0.05
+    a.session_tokens = 500
+    a.audit = MagicMock()
     a.session_id = "sess123"
     return a
 

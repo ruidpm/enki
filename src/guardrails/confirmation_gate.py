@@ -2,31 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
-# Tools that must be confirmed before execution
-REQUIRES_CONFIRM: frozenset[str] = frozenset(
-    {
-        "create_task",
-        "update_task",
-        "delete_task",
-        "git_commit",
-        "git_push_branch",
-        "create_pr",
-        "request_restart",
-        "propose_tool",
-        "remove_tool",
-        "manage_team",
-        "manage_schedule",
-        "manage_workspace",
-    }
-)
-
-
-class Notifier(Protocol):
-    async def ask_confirm(self, tool_name: str, params: dict[str, Any]) -> bool:
-        """Send Y/N prompt to user, return True if confirmed."""
-        ...
+from src.constants import REQUIRES_CONFIRM
+from src.interfaces.notifier import Notifier
 
 
 class ConfirmationGateHook:

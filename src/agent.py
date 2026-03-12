@@ -99,6 +99,22 @@ class Agent:
     def session_id(self) -> str:
         return self._session_id
 
+    @property
+    def daily_cost_usd(self) -> float:
+        return self._cost_guard.daily_cost_usd
+
+    @property
+    def monthly_cost_usd(self) -> float:
+        return self._cost_guard.monthly_cost_usd
+
+    @property
+    def session_tokens(self) -> int:
+        return self._cost_guard.session_tokens
+
+    @property
+    def audit(self) -> AuditDB:
+        return self._audit
+
     def _estimate_tokens(self) -> int:
         """Estimate total conversation tokens using chars/4 heuristic."""
         total_chars = 0

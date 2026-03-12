@@ -19,12 +19,14 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
+from src.interfaces.agent_protocol import AgentProtocol
+from src.interfaces.notifier import Notifier
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
@@ -71,12 +73,6 @@ _LLM_STAGES = {
 
 _CLARIFICATION_PREFIX = "CLARIFICATION_NEEDED:"
 _MAX_CLARIFICATION_ROUNDS = 2
-
-
-class Notifier(Protocol):
-    async def ask_single_confirm(self, reason: str, changes_summary: str) -> bool: ...
-    async def send(self, message: str) -> None: ...
-    async def ask_free_text(self, prompt: str, timeout_s: int = 300) -> str | None: ...
 
 
 def _branch_name(task: str, pipeline_id: str) -> str:
@@ -145,9 +141,9 @@ class RunPipelineTool:
         self._registry = tool_registry
         self._job_registry: JobRegistry | None = job_registry
         self._cost_guard: CostGuardHook | None = cost_guard
-        self._agent: Any = None
+        self._agent: AgentProtocol | None = None
 
-    def set_agent(self, agent: Any) -> None:
+    def set_agent(self, agent: AgentProtocol) -> None:
         """Wire in the main agent for summarization. Called after Agent is built."""
         self._agent = agent
 

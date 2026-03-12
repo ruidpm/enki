@@ -10,12 +10,14 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
+from src.interfaces.agent_protocol import AgentProtocol
+from src.interfaces.notifier import Notifier
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
 
@@ -25,14 +27,6 @@ if TYPE_CHECKING:
 log = structlog.get_logger()
 
 _EXCLUDED_TOOLS = {"spawn_team", "spawn_agent"}
-
-
-class Notifier(Protocol):
-    async def send(self, message: str) -> None: ...
-
-
-class Agent(Protocol):
-    async def run_turn(self, user_message: str) -> str: ...
 
 
 class SpawnTeamTool:
@@ -73,9 +67,9 @@ class SpawnTeamTool:
         self._notifier = notifier
         self._job_registry: JobRegistry | None = job_registry
         self._cost_guard: CostGuardHook | None = cost_guard
-        self._agent: Agent | None = None
+        self._agent: AgentProtocol | None = None
 
-    def set_agent(self, agent: Agent) -> None:
+    def set_agent(self, agent: AgentProtocol) -> None:
         """Wire the main agent after construction (avoids circular dep at build time)."""
         self._agent = agent
 

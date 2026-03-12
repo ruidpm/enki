@@ -14,9 +14,12 @@ import asyncio
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import structlog
+
+from src.interfaces.agent_protocol import AgentProtocol
+from src.interfaces.notifier import Notifier
 
 # Files/dirs Claude Code must never modify when working on THIS assistant's repo.
 # Any violation is flagged loudly in the completion notification.
@@ -107,11 +110,6 @@ def _build_claude_md(language: str | None) -> str:
 _GIST_THRESHOLD = 500  # chars — above this, create a gist instead of dumping raw text
 
 
-class ClaudeCodeNotifier(Protocol):
-    async def ask_single_confirm(self, reason: str, changes_summary: str) -> bool: ...
-    async def send(self, message: str) -> None: ...
-
-
 class RunClaudeCodeTool:
     name = "run_claude_code"
     description = (
@@ -144,7 +142,7 @@ class RunClaudeCodeTool:
 
     def __init__(
         self,
-        notifier: ClaudeCodeNotifier,
+        notifier: Notifier,
         project_dir: Path,
         workspace_store: object = None,
         job_registry: object = None,
@@ -154,9 +152,9 @@ class RunClaudeCodeTool:
         self._workspace_store = workspace_store
         self._job_registry = job_registry
         self._last_spawn: float = 0.0
-        self._agent: Any = None
+        self._agent: AgentProtocol | None = None
 
-    def set_agent(self, agent: Any) -> None:
+    def set_agent(self, agent: AgentProtocol) -> None:
         """Wire in the main agent for summarization. Called after Agent is built."""
         self._agent = agent
 

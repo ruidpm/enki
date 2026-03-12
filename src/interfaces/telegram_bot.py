@@ -79,9 +79,9 @@ class TelegramBot:
         if not self._authorized(update):
             return
         assert self._agent is not None
-        daily = self._agent._cost_guard.daily_cost_usd
-        monthly = self._agent._cost_guard.monthly_cost_usd
-        tokens = self._agent._cost_guard.session_tokens
+        daily = self._agent.daily_cost_usd
+        monthly = self._agent.monthly_cost_usd
+        tokens = self._agent.session_tokens
         await update.message.reply_text(  # type: ignore[union-attr]
             f"Session tokens: {tokens:,}\nToday: ${daily:.4f}\nThis month: ${monthly:.4f}"
         )
@@ -99,7 +99,7 @@ class TelegramBot:
         assert self._agent is not None
         from src.audit.query import AuditQuery
 
-        q = AuditQuery(self._agent._audit)
+        q = AuditQuery(self._agent.audit)
         events = q.get_security_events()
         if not events:
             await update.message.reply_text("No security events recorded.")  # type: ignore[union-attr]

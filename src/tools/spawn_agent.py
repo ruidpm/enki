@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
 from src.sub_agent import SubAgentRunner
 
