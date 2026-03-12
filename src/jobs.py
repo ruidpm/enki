@@ -52,6 +52,8 @@ class JobRegistry:
             "model": model,
             "tokens_in": 0,
             "tokens_out": 0,
+            "result_summary": None,
+            "gist_url": None,
         }
 
     def set_task(self, job_id: str, task: asyncio.Task[Any]) -> None:
@@ -81,6 +83,22 @@ class JobRegistry:
         if job is not None:
             job["tokens_in"] += input_tokens
             job["tokens_out"] += output_tokens
+
+    def set_result(
+        self,
+        job_id: str,
+        *,
+        summary: str | None = None,
+        gist_url: str | None = None,
+    ) -> None:
+        """Store result summary and/or gist URL for a completed job."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            return
+        if summary is not None:
+            job["result_summary"] = summary
+        if gist_url is not None:
+            job["gist_url"] = gist_url
 
     def finish(self, job_id: str, *, success: bool, error: str | None = None) -> None:
         """Mark a job as DONE or FAILED."""

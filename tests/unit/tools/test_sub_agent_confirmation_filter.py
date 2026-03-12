@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 from src.guardrails.confirmation_gate import REQUIRES_CONFIRM
+from src.models import ModelId
 
 
 def _make_tool(name: str) -> MagicMock:
@@ -40,7 +41,7 @@ def test_spawn_team_filters_confirmation_tools() -> None:
 
     config = MagicMock()
     config.anthropic_api_key = "test"
-    config.haiku_model = "claude-haiku-4-5-20251001"
+    config.haiku_model = ModelId.HAIKU
     notifier = MagicMock()
     notifier.send = AsyncMock()
 
@@ -87,7 +88,7 @@ def test_spawn_agent_filters_confirmation_tools() -> None:
 
     config = MagicMock()
     config.anthropic_api_key = "test"
-    config.haiku_model = "claude-haiku-4-5-20251001"
+    config.haiku_model = ModelId.HAIKU
 
     SpawnAgentTool(config=config, tool_registry=registry)
 

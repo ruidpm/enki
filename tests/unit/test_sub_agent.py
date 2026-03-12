@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from src.models import ModelId
 from src.sub_agent import SubAgentRunner
 
 
@@ -15,7 +16,7 @@ def test_max_steps_returns_incomplete_marker() -> None:
     SubAgentRunner(
         config=config,
         tools={},
-        model="claude-haiku-4-5-20251001",
+        model=ModelId.HAIKU,
         max_steps=0,  # immediate hit
         label="test-agent",
     )

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from anthropic.types import TextBlock, ToolUseBlock
 
+from src.models import ModelId
 from src.sub_agent import SubAgentRunner
 from src.tools.spawn_agent import SpawnAgentTool
 
@@ -19,7 +20,7 @@ from src.tools.spawn_agent import SpawnAgentTool
 def config() -> MagicMock:
     cfg = MagicMock()
     cfg.anthropic_api_key = "test-key"
-    cfg.default_model = "claude-haiku-4-5-20251001"
+    cfg.default_model = ModelId.HAIKU
     return cfg
 
 
@@ -87,11 +88,11 @@ async def test_spawn_uses_requested_model(spawn_tool: SpawnAgentTool) -> None:
         runner.run = AsyncMock(return_value=("ok", 50))
         MockRunner.return_value = runner
 
-        await spawn_tool.execute(task="task", model="claude-opus-4-6", tools=["web_search"])
+        await spawn_tool.execute(task="task", model=ModelId.OPUS, tools=["web_search"])
 
     call_kwargs = MockRunner.call_args[1]
     model = call_kwargs.get("model") or MockRunner.call_args[0][2]
-    assert model == "claude-opus-4-6"
+    assert model == ModelId.OPUS
 
 
 @pytest.mark.asyncio
@@ -148,9 +149,7 @@ async def test_runner_returns_text_on_end_turn(config: MagicMock, mock_tool: Mag
         client.messages.create = AsyncMock(return_value=response)
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(
-            config=config, tools={"web_search": mock_tool}, model="claude-haiku-4-5-20251001", max_tokens=1024
-        )
+        runner = SubAgentRunner(config=config, tools={"web_search": mock_tool}, model=ModelId.HAIKU, max_tokens=1024)
         text, tokens = await runner.run("What is 2+2?")
 
     assert "Here is the answer." in text
@@ -185,9 +184,7 @@ async def test_runner_calls_tool_and_continues(config: MagicMock, mock_tool: Mag
         client.messages.create = AsyncMock(side_effect=[tool_use_response, end_response])
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(
-            config=config, tools={"web_search": mock_tool}, model="claude-haiku-4-5-20251001", max_tokens=1024
-        )
+        runner = SubAgentRunner(config=config, tools={"web_search": mock_tool}, model=ModelId.HAIKU, max_tokens=1024)
         text, tokens = await runner.run("Search for news")
 
     assert "nothing new" in text
@@ -220,7 +217,7 @@ async def test_runner_handles_unknown_tool_gracefully(config: MagicMock) -> None
         client.messages.create = AsyncMock(side_effect=[tool_use_response, end_response])
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(config=config, tools={}, model="claude-haiku-4-5-20251001", max_tokens=1024)
+        runner = SubAgentRunner(config=config, tools={}, model=ModelId.HAIKU, max_tokens=1024)
         text, tokens = await runner.run("use a tool")
 
     assert isinstance(text, str)

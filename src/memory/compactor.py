@@ -10,6 +10,8 @@ import anthropic
 import structlog
 from anthropic.types import TextBlock
 
+from src.models import ModelId
+
 from .store import MemoryStore
 
 log = structlog.get_logger()
@@ -91,7 +93,7 @@ class MemoryCompactor:
         store: MemoryStore,
         anthropic_client: anthropic.AsyncAnthropic,
         facts_path: Path,
-        model: str = "claude-haiku-4-5-20251001",
+        model: str = ModelId.HAIKU,
     ) -> None:
         self._store = store
         self._client = anthropic_client

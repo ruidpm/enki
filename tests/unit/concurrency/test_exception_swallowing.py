@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.teams.store import TeamsStore
 from src.tools.spawn_team import SpawnTeamTool
 
@@ -25,28 +26,29 @@ def teams_store(tmp_path: Path) -> TeamsStore:
 @pytest.fixture
 def config() -> MagicMock:
     c = MagicMock()
-    c.haiku_model = "claude-haiku-4-5-20251001"
+    c.haiku_model = ModelId.HAIKU
     c.anthropic_api_key = "test-key"
     return c
 
 
 @pytest.mark.asyncio
-async def test_spawn_team_sage_relay_error_with_fallback_failure(teams_store: TeamsStore, config: MagicMock) -> None:
-    """When agent.run_turn raises AND fallback notifier.send raises, no exception escapes."""
+async def test_spawn_team_summary_error_with_fallback_failure(teams_store: TeamsStore, config: MagicMock) -> None:
+    """When stateless API raises AND fallback notifier.send raises, no exception escapes."""
     notifier = AsyncMock()
     # First call (inside except block, fallback send) also fails
     notifier.send = AsyncMock(side_effect=RuntimeError("notification service down"))
 
-    agent = AsyncMock()
-    agent.run_turn = AsyncMock(side_effect=RuntimeError("agent error"))
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API error"))
 
     tool = SpawnTeamTool(
         store=teams_store,
         config=config,
         tool_registry={},
         notifier=notifier,
+        anthropic_client=mock_client,
+        summary_model=ModelId.HAIKU,
     )
-    tool.set_agent(agent)
 
     team = teams_store.get_team("t1")
     assert team is not None
@@ -61,8 +63,8 @@ async def test_spawn_team_sage_relay_error_with_fallback_failure(teams_store: Te
 
 
 @pytest.mark.asyncio
-async def test_spawn_team_no_agent_fallback_send_failure(teams_store: TeamsStore, config: MagicMock) -> None:
-    """When agent is None and fallback notifier.send raises, no exception escapes."""
+async def test_spawn_team_no_client_fallback_send_failure(teams_store: TeamsStore, config: MagicMock) -> None:
+    """When client is None and fallback notifier.send raises, no exception escapes."""
     notifier = AsyncMock()
     notifier.send = AsyncMock(side_effect=RuntimeError("send failed"))
 
@@ -71,8 +73,8 @@ async def test_spawn_team_no_agent_fallback_send_failure(teams_store: TeamsStore
         config=config,
         tool_registry={},
         notifier=notifier,
+        # No anthropic_client
     )
-    # No agent wired
 
     team = teams_store.get_team("t1")
     assert team is not None
@@ -92,17 +94,21 @@ async def test_spawn_team_no_agent_fallback_send_failure(teams_store: TeamsStore
 
 
 @pytest.mark.asyncio
-async def test_output_delivery_agent_and_notifier_both_fail() -> None:
-    """When agent.run_turn fails and notifier.send also fails, no exception escapes."""
+async def test_output_delivery_client_and_notifier_both_fail() -> None:
+    """When stateless API fails and notifier.send also fails, no exception escapes."""
     from src.output_delivery import OutputDelivery
 
     notifier = MagicMock()
     notifier.send = AsyncMock(side_effect=RuntimeError("telegram down"))
 
-    agent = AsyncMock()
-    agent.run_turn = AsyncMock(side_effect=RuntimeError("agent crashed"))
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(side_effect=RuntimeError("API crashed"))
 
-    delivery = OutputDelivery(notifier=notifier, agent=agent)
+    delivery = OutputDelivery(
+        notifier=notifier,
+        anthropic_client=mock_client,
+        model=ModelId.HAIKU,
+    )
 
     # This must NOT raise
     await delivery.send_output("job1", "x" * 1000)

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from src.models import ModelId
+
 # Cost per million tokens (input, output) in USD — approximate
 MODEL_COSTS: dict[str, tuple[float, float]] = {
-    "claude-haiku-4-5-20251001": (0.80, 4.00),
-    "claude-sonnet-4-6": (3.00, 15.00),
-    "claude-opus-4-6": (15.00, 75.00),
+    ModelId.HAIKU: (0.80, 4.00),
+    ModelId.SONNET: (3.00, 15.00),
+    ModelId.OPUS: (15.00, 75.00),
 }
 
 # Default fallback (sonnet rates)

@@ -230,6 +230,9 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     job_registry = JobRegistry()
     register(JobStatusTool(registry=job_registry))
 
+    # Shared Anthropic client — used by tools for stateless summarization (no conversation pollution)
+    _anthropic_client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key)
+
     teams_db_path = data_dir / "teams.db"
     teams_store = TeamsStore(teams_db_path)
     seed_engineering_teams(teams_store)
@@ -240,6 +243,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         notifier=_notifier_instance,
         job_registry=job_registry,
         cost_guard=cost_guard,
+        anthropic_client=_anthropic_client,
+        summary_model=config.haiku_model,
     )
     register(_spawn_team_tool)
     register(TeamReportTool(store=teams_store))
@@ -257,6 +262,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         job_registry=job_registry,
         timeout_seconds=config.claude_code_timeout_seconds,
         cooldown_seconds=config.claude_code_cooldown_seconds,
+        anthropic_client=_anthropic_client,
+        summary_model=config.haiku_model,
     )
     register(_run_claude_code_tool)
 
@@ -281,6 +288,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         tool_registry=registry,
         job_registry=job_registry,
         cost_guard=cost_guard,
+        anthropic_client=_anthropic_client,
+        summary_model=config.haiku_model,
     )
     register(_run_pipeline_tool)
 
@@ -324,13 +333,9 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         session_id=session_id,
     )
 
-    _spawn_team_tool.set_agent(agent)
-    _run_claude_code_tool.set_agent(agent)
-    _run_pipeline_tool.set_agent(agent)
-
     compactor = MemoryCompactor(
         store=memory,
-        anthropic_client=anthropic.AsyncAnthropic(api_key=config.anthropic_api_key),
+        anthropic_client=_anthropic_client,
         facts_path=_facts_path,
         model=config.haiku_model,
     )

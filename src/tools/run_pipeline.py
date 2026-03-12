@@ -25,7 +25,6 @@ import structlog
 
 from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
-from src.interfaces.agent_protocol import AgentProtocol
 from src.interfaces.notifier import Notifier
 from src.output_delivery import OutputDelivery
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
@@ -131,6 +130,8 @@ class RunPipelineTool:
         tool_registry: dict[str, Any],
         job_registry: JobRegistry | None = None,
         cost_guard: CostGuardHook | None = None,
+        anthropic_client: object = None,
+        summary_model: str = "",
     ) -> None:
         self._notifier = notifier
         self._pipelines = pipeline_store
@@ -140,13 +141,12 @@ class RunPipelineTool:
         self._registry = tool_registry
         self._job_registry: JobRegistry | None = job_registry
         self._cost_guard: CostGuardHook | None = cost_guard
-        self._agent: AgentProtocol | None = None
-        self._output = OutputDelivery(notifier=notifier)
-
-    def set_agent(self, agent: AgentProtocol) -> None:
-        """Wire in the main agent for summarization. Called after Agent is built."""
-        self._agent = agent
-        self._output.set_agent(agent)
+        self._output = OutputDelivery(
+            notifier=notifier,
+            anthropic_client=anthropic_client,
+            model=summary_model,
+            job_registry=job_registry,
+        )
 
     async def execute(self, **kwargs: Any) -> str:
         workspace_id: str = kwargs.get("workspace_id", "").strip()

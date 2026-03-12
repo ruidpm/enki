@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.tools.spawn_agent import SpawnAgentTool
 
 
@@ -14,7 +15,7 @@ from src.tools.spawn_agent import SpawnAgentTool
 def config() -> MagicMock:
     cfg = MagicMock()
     cfg.anthropic_api_key = "test-key"
-    cfg.haiku_model = "claude-haiku-4-5-20251001"
+    cfg.haiku_model = ModelId.HAIKU
     return cfg
 
 

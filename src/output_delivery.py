@@ -1,16 +1,22 @@
 """Shared output delivery — gist creation + summarized notifications.
 
 Used by RunClaudeCodeTool and RunPipelineTool to avoid duplication.
+Summarization uses a stateless Anthropic API call (no conversation pollution).
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from src.interfaces.notifier import Notifier
+
+if TYPE_CHECKING:
+    import anthropic
+
+    from src.jobs import JobRegistry
 
 log = structlog.get_logger()
 
@@ -23,16 +29,16 @@ class OutputDelivery:
     def __init__(
         self,
         notifier: Notifier,
-        agent: Any = None,
+        anthropic_client: Any | None = None,
+        model: str = "",
         gist_threshold: int = _GIST_THRESHOLD,
+        job_registry: Any | None = None,
     ) -> None:
         self._notifier = notifier
-        self._agent = agent
+        self._client: anthropic.AsyncAnthropic | None = anthropic_client
+        self._model = model
         self._gist_threshold = gist_threshold
-
-    def set_agent(self, agent: Any) -> None:
-        """Wire agent after construction (avoids circular deps)."""
-        self._agent = agent
+        self._job_registry: JobRegistry | None = job_registry
 
     async def create_gist(self, content: str, description: str) -> str | None:
         """Create a secret GitHub gist via gh CLI. Returns URL or None on failure."""
@@ -62,6 +68,24 @@ class OutputDelivery:
             log.warning("gist_create_failed", error=str(exc))
         return None
 
+    async def _summarize(self, text: str, context: str) -> str | None:
+        """Stateless summarization via Anthropic API. Returns summary or None."""
+        if self._client is None:
+            return None
+        prompt = (
+            f"Summarise the following output in 2-3 bullet points for a Telegram message. Be concise.{context}\n\n{text[:4000]}"
+        )
+        try:
+            resp = await self._client.messages.create(
+                model=self._model,
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return resp.content[0].text  # type: ignore[union-attr]
+        except Exception as exc:
+            log.warning("output_summary_failed", error=str(exc))
+            return None
+
     async def send_output(
         self,
         job_id: str,
@@ -70,24 +94,21 @@ class OutputDelivery:
         prefix: str = "",
         summary_context: str = "",
     ) -> None:
-        """Send job output to notifier. Long output -> gist + agent summary."""
+        """Send job output to notifier. Long output -> gist + stateless summary."""
         try:
-            if len(full_output) <= self._gist_threshold or self._agent is None:
+            if len(full_output) <= self._gist_threshold or self._client is None:
                 truncated = full_output[: max(self._gist_threshold + 300, 800)]
                 await self._notifier.send(f"{prefix}\n{truncated}")
                 return
 
             gist_url = await self.create_gist(full_output, f"Enki job {job_id} output")
-            prompt = (
-                f"Summarise the following output in 2-3 bullet points "
-                f"for a Telegram message. Be concise.{summary_context}"
-                f"\n\n{full_output[:4000]}"
-            )
-            try:
-                summary = await self._agent.run_turn(prompt)
-            except Exception as exc:
-                log.warning("output_summary_failed", job_id=job_id, error=str(exc))
+            summary = await self._summarize(full_output, summary_context)
+            if summary is None:
                 summary = full_output[:400]
+
+            # Store results in registry if available
+            if self._job_registry is not None:
+                self._job_registry.set_result(job_id, summary=summary, gist_url=gist_url)
 
             if gist_url:
                 await self._notifier.send(f"{prefix}\n{summary}\n\nFull report: {gist_url}")

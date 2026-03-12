@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.models import ModelId
 from src.tools.claude_code import RunClaudeCodeTool
 
 
@@ -34,8 +35,14 @@ def test_tool_has_output_delivery(tool: RunClaudeCodeTool) -> None:
     assert isinstance(tool._output, OutputDelivery)
 
 
-def test_set_agent_wires_output_delivery(tool: RunClaudeCodeTool) -> None:
-    """set_agent should propagate to OutputDelivery."""
-    agent = MagicMock()
-    tool.set_agent(agent)
-    assert tool._output._agent is agent
+def test_client_wired_to_output_delivery(notifier: MagicMock, tmp_path: Path) -> None:
+    """anthropic_client passed to constructor should propagate to OutputDelivery."""
+    mock_client = MagicMock()
+    tool = RunClaudeCodeTool(
+        notifier=notifier,
+        project_dir=tmp_path,
+        anthropic_client=mock_client,
+        summary_model=ModelId.HAIKU,
+    )
+    assert tool._output._client is mock_client
+    assert tool._output._model == ModelId.HAIKU

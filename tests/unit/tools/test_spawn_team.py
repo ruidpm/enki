@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.teams.store import TeamsStore
 from src.tools.spawn_team import SpawnTeamTool
 
@@ -28,7 +29,7 @@ def store(tmp_path: Path) -> TeamsStore:
 @pytest.fixture
 def config() -> MagicMock:
     c = MagicMock()
-    c.haiku_model = "claude-haiku-4-5-20251001"
+    c.haiku_model = ModelId.HAIKU
     c.anthropic_api_key = "test-key"
     return c
 

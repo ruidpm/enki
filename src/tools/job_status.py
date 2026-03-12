@@ -32,6 +32,10 @@ def _fmt_job(job: dict[str, Any]) -> str:
     line += f"\n     {job['description'][:80]}"
     if job["status"] == JobStatus.FAILED and job["error"]:
         line += f"\n     Error: {job['error'][:120]}"
+    if job["status"] == JobStatus.DONE and job.get("result_summary"):
+        line += f"\n     Result: {job['result_summary'][:200]}"
+    if job.get("gist_url"):
+        line += f"\n     Full report: {job['gist_url']}"
     return line
 
 

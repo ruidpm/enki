@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.teams.store import TeamsStore
 from src.tools.run_pipeline import RunPipelineTool
@@ -25,8 +26,8 @@ def _make_notifier(confirmed: bool = True) -> AsyncMock:
 def _make_config() -> MagicMock:
     cfg = MagicMock()
     cfg.anthropic_api_key = "test-key"
-    cfg.haiku_model = "claude-haiku-4-5-20251001"
-    cfg.sonnet_model = "claude-sonnet-4-6"
+    cfg.haiku_model = ModelId.HAIKU
+    cfg.sonnet_model = ModelId.SONNET
     return cfg
 
 

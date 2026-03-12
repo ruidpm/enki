@@ -12,11 +12,11 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+import anthropic
 import structlog
 
 from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
-from src.interfaces.agent_protocol import AgentProtocol
 from src.interfaces.notifier import Notifier
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
@@ -60,6 +60,8 @@ class SpawnTeamTool:
         notifier: Notifier,
         job_registry: JobRegistry | None = None,
         cost_guard: CostGuardHook | None = None,
+        anthropic_client: anthropic.AsyncAnthropic | None = None,
+        summary_model: str = "",
     ) -> None:
         self._store = store
         self._config = config
@@ -67,11 +69,8 @@ class SpawnTeamTool:
         self._notifier = notifier
         self._job_registry: JobRegistry | None = job_registry
         self._cost_guard: CostGuardHook | None = cost_guard
-        self._agent: AgentProtocol | None = None
-
-    def set_agent(self, agent: AgentProtocol) -> None:
-        """Wire the main agent after construction (avoids circular dep at build time)."""
-        self._agent = agent
+        self._client: anthropic.AsyncAnthropic | None = anthropic_client
+        self._summary_model = summary_model
 
     async def execute(self, **kwargs: Any) -> str:
         team_id: str = kwargs["team_id"]
@@ -176,31 +175,39 @@ class SpawnTeamTool:
 
         log.info("spawn_team_done", team_id=team_id, job_id=job_id, success=success, duration_s=duration)
 
-        # Route through Enki so he can synthesize and decide what to surface
-        if self._agent is not None:
+        # Summarize via stateless API call (no conversation pollution)
+        status_icon = "✅" if success else "❌"
+        prefix = f"{status_icon} **Team '{team_id}'** finished job `{job_id}`"
+
+        if self._client is not None:
             report_prompt = (
                 f"Team '{team['name']}' (id: {team_id}) has completed job `{job_id}`.\n\n"
-                f"Their report:\n{raw_result}\n\n"
-                f"Synthesize this and decide what's worth telling the user. "
-                f"If it's urgent or actionable, send a Telegram message now. "
-                f"If it's routine, a brief summary is fine."
+                f"Their report:\n{raw_result[:4000]}\n\n"
+                f"Synthesize this into 2-3 bullet points for a Telegram notification. Be concise."
             )
             try:
-                sage_response = await self._agent.run_turn(report_prompt)
-                await self._notifier.send(sage_response)
+                resp = await self._client.messages.create(
+                    model=self._summary_model,
+                    max_tokens=300,
+                    messages=[{"role": "user", "content": report_prompt}],
+                )
+                summary = resp.content[0].text  # type: ignore[union-attr]
+
+                # Store result in registry
+                if self._job_registry is not None:
+                    self._job_registry.set_result(job_id, summary=summary)
+
+                await self._notifier.send(f"{prefix}\n\n{summary}")
             except Exception as exc:
-                log.error("spawn_team_sage_relay_error", job_id=job_id, error=str(exc))
+                log.error("spawn_team_summary_error", job_id=job_id, error=str(exc))
                 # Fallback: send raw result rather than silently drop it
                 try:
-                    await self._notifier.send(
-                        f"**Team '{team_id}'** finished job `{job_id}` (relay error — raw result):\n\n{raw_result}"
-                    )
+                    await self._notifier.send(f"{prefix} (summary error — raw result):\n\n{raw_result}")
                 except Exception as fallback_exc:
                     log.error("spawn_team_fallback_send_failed", job_id=job_id, error=str(fallback_exc))
         else:
-            # No agent wired (e.g. tests or CLI without agent set) — send raw
-            status = "✅" if success else "❌"
+            # No client configured (e.g. tests or CLI) — send raw
             try:
-                await self._notifier.send(f"{status} **Team '{team_id}'** finished job `{job_id}`\n\n{raw_result}")
+                await self._notifier.send(f"{prefix}\n\n{raw_result}")
             except Exception as exc:
                 log.error("spawn_team_raw_send_failed", job_id=job_id, error=str(exc))

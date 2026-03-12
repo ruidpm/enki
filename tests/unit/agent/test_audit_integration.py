@@ -14,6 +14,7 @@ from src.guardrails.allowlist import AllowlistHook
 from src.guardrails.cost_guard import CostGuardHook
 from src.guardrails.loop_detector import LoopDetectorHook
 from src.guardrails.rate_limiter import RateLimiterHook
+from src.models import ModelId
 
 
 class FakeTool:
@@ -48,9 +49,9 @@ def _make_agent(
 
     config = MagicMock(spec=Settings)
     config.anthropic_api_key = "test-key"
-    config.default_model = "claude-sonnet-4-6"
-    config.haiku_model = "claude-haiku-4-5-20251001"
-    config.opus_model = "claude-opus-4-6"
+    config.default_model = ModelId.SONNET
+    config.haiku_model = ModelId.HAIKU
+    config.opus_model = ModelId.OPUS
     config.session_timeout_hours = 8
     config.max_autonomous_turns = 5
     config.max_tokens_per_session = 100_000

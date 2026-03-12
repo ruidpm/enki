@@ -147,3 +147,38 @@ async def test_status_specific_job(tool: JobStatusTool, registry: JobRegistry) -
 async def test_status_unknown_job(tool: JobStatusTool) -> None:
     result = await tool.execute(job_id="ghost")
     assert "not found" in result.lower() or "error" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Result summary + gist URL display
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_status_shows_result_summary(tool: JobStatusTool, registry: JobRegistry) -> None:
+    registry.start("res01", job_type="team", description="research task")
+    registry.finish("res01", success=True)
+    registry.set_result("res01", summary="Found 3 critical issues")
+
+    result = await tool.execute(job_id="res01")
+    assert "Found 3 critical issues" in result
+
+
+@pytest.mark.asyncio
+async def test_status_shows_gist_url(tool: JobStatusTool, registry: JobRegistry) -> None:
+    registry.start("res02", job_type="ccc", description="fix bugs")
+    registry.finish("res02", success=True)
+    registry.set_result("res02", gist_url="https://gist.github.com/abc")
+
+    result = await tool.execute(job_id="res02")
+    assert "https://gist.github.com/abc" in result
+
+
+@pytest.mark.asyncio
+async def test_status_no_result_no_extra_lines(tool: JobStatusTool, registry: JobRegistry) -> None:
+    registry.start("res03", job_type="ccc", description="task")
+    registry.finish("res03", success=True)
+
+    result = await tool.execute(job_id="res03")
+    assert "Result:" not in result
+    assert "Full report:" not in result

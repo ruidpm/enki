@@ -18,7 +18,6 @@ from typing import Any
 
 import structlog
 
-from src.interfaces.agent_protocol import AgentProtocol
 from src.interfaces.notifier import Notifier
 from src.output_delivery import OutputDelivery
 
@@ -146,6 +145,8 @@ class RunClaudeCodeTool:
         job_registry: object = None,
         timeout_seconds: int = _DEFAULT_TIMEOUT,
         cooldown_seconds: int = _DEFAULT_COOLDOWN,
+        anthropic_client: object = None,
+        summary_model: str = "",
     ) -> None:
         self._notifier = notifier
         self._project_dir = project_dir
@@ -154,11 +155,12 @@ class RunClaudeCodeTool:
         self._timeout_seconds = timeout_seconds
         self._cooldown_seconds = cooldown_seconds
         self._last_spawn: float = 0.0
-        self._output = OutputDelivery(notifier=notifier)
-
-    def set_agent(self, agent: AgentProtocol) -> None:
-        """Wire in the main agent for summarization. Called after Agent is built."""
-        self._output.set_agent(agent)
+        self._output = OutputDelivery(
+            notifier=notifier,
+            anthropic_client=anthropic_client,
+            model=summary_model,
+            job_registry=job_registry,
+        )
 
     async def execute(self, **kwargs: Any) -> str:
         task: str = kwargs["task"]

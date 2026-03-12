@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.models import ModelId
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -42,9 +44,9 @@ class Settings(BaseSettings):
     max_context_tokens: int = Field(default=120_000, ge=1000)
 
     # Model routing
-    default_model: str = "claude-sonnet-4-6"
-    haiku_model: str = "claude-haiku-4-5-20251001"
-    opus_model: str = "claude-opus-4-6"
+    default_model: str = ModelId.SONNET
+    haiku_model: str = ModelId.HAIKU
+    opus_model: str = ModelId.OPUS
 
     # Email (optional — tool skipped if not set)
     imap_host: str | None = None

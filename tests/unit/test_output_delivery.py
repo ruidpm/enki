@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.output_delivery import OutputDelivery
 
 
@@ -68,24 +69,33 @@ class TestSendOutput:
         assert "short result" in notifier.send.call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_long_output_creates_gist(self) -> None:
+    async def test_long_output_creates_gist_stateless(self) -> None:
+        """Stateless summarization uses anthropic client, not agent.run_turn."""
         notifier = AsyncMock()
-        agent = AsyncMock()
-        agent.run_turn = AsyncMock(return_value="Summary bullet points")
-        delivery = OutputDelivery(notifier=notifier, agent=agent)
+        mock_client = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.content = [AsyncMock(text="Summary bullet points")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        delivery = OutputDelivery(
+            notifier=notifier,
+            anthropic_client=mock_client,
+            model=ModelId.HAIKU,
+        )
 
         long_text = "x" * 600
 
         with patch.object(delivery, "create_gist", return_value="https://gist.github.com/abc"):
             await delivery.send_output("job1", long_text, prefix="[Job job1] Done:")
 
+        mock_client.messages.create.assert_called_once()
         notifier.send.assert_called_once()
         msg = notifier.send.call_args[0][0]
         assert "https://gist.github.com/abc" in msg
         assert "Summary bullet points" in msg
 
     @pytest.mark.asyncio
-    async def test_long_output_no_agent_truncates(self) -> None:
+    async def test_long_output_no_client_truncates(self) -> None:
         notifier = AsyncMock()
         delivery = OutputDelivery(notifier=notifier)
         long_text = "x" * 600
@@ -93,15 +103,20 @@ class TestSendOutput:
         await delivery.send_output("job1", long_text, prefix="[Job job1] Done:")
 
         notifier.send.assert_called_once()
-        # No gist, no summary — sent with truncation cap (800 chars of content)
-        notifier.send.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_gist_failure_still_sends_summary(self) -> None:
         notifier = AsyncMock()
-        agent = AsyncMock()
-        agent.run_turn = AsyncMock(return_value="Summary")
-        delivery = OutputDelivery(notifier=notifier, agent=agent)
+        mock_client = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.content = [AsyncMock(text="Summary")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        delivery = OutputDelivery(
+            notifier=notifier,
+            anthropic_client=mock_client,
+            model=ModelId.HAIKU,
+        )
 
         with patch.object(delivery, "create_gist", return_value=None):
             await delivery.send_output("job1", "x" * 600, prefix="[Job job1] Done:")
@@ -109,3 +124,32 @@ class TestSendOutput:
         msg = notifier.send.call_args[0][0]
         assert "gist creation failed" in msg
         assert "Summary" in msg
+
+    @pytest.mark.asyncio
+    async def test_send_output_stores_result_in_registry(self) -> None:
+        """When job_registry is provided, summary and gist_url are stored."""
+        from src.jobs import JobRegistry
+
+        registry = JobRegistry()
+        registry.start("job1", job_type="ccc", description="test")
+
+        notifier = AsyncMock()
+        mock_client = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.content = [AsyncMock(text="Summary text")]
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        delivery = OutputDelivery(
+            notifier=notifier,
+            anthropic_client=mock_client,
+            model=ModelId.HAIKU,
+            job_registry=registry,
+        )
+
+        with patch.object(delivery, "create_gist", return_value="https://gist.github.com/abc"):
+            await delivery.send_output("job1", "x" * 600, prefix="[Job job1] Done:")
+
+        job = registry.get("job1")
+        assert job is not None
+        assert job["result_summary"] == "Summary text"
+        assert job["gist_url"] == "https://gist.github.com/abc"

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models import ModelId
 from src.tools.claude_code import RunClaudeCodeTool
 
 
@@ -76,7 +77,7 @@ async def test_proc_wait_called_after_kill_in_pipeline_implement(
     teams_store = TeamsStore(tmp_path / "teams.db")
 
     config = MagicMock()
-    config.haiku_model = "claude-haiku-4-5-20251001"
+    config.haiku_model = ModelId.HAIKU
 
     tool = RunPipelineTool(
         notifier=notifier,

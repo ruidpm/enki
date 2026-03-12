@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.guardrails.cost_guard import CostGuardHook
+from src.models import ModelId
 from src.sub_agent import SubAgentRunner
 
 
@@ -30,7 +31,7 @@ def test_sub_agent_accepts_cost_callback() -> None:
     runner = SubAgentRunner(
         config=config,
         tools={},
-        model="claude-haiku-4-5-20251001",
+        model=ModelId.HAIKU,
         on_cost=cost_cb,
     )
     assert runner._on_cost is cost_cb
@@ -44,7 +45,7 @@ def test_spawn_team_wires_cost_callback() -> None:
     store = MagicMock(spec=TeamsStore)
     config = MagicMock()
     config.anthropic_api_key = "test"
-    config.haiku_model = "claude-haiku-4-5-20251001"
+    config.haiku_model = ModelId.HAIKU
     notifier = MagicMock()
     notifier.send = AsyncMock()
     cost_guard = CostGuardHook(
