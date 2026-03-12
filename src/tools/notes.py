@@ -11,6 +11,8 @@ import structlog
 log = structlog.get_logger()
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_\-]+$")
+_MAX_CONTENT_SIZE = 1_000_000  # 1 MB max per write/append
+_MAX_FILE_SIZE = 2_000_000  # 2 MB max total file size
 
 
 class NotesTool:
@@ -60,10 +62,20 @@ class NotesTool:
         content = kwargs.get("content", "")
 
         if action == "write":
+            if len(content) > _MAX_CONTENT_SIZE:
+                return f"Content too large ({len(content):,} bytes). Max write size is {_MAX_CONTENT_SIZE:,} bytes."
             path.write_text(content)
             return f"Notes for '{project}' saved."
 
         if action == "append":
+            if len(content) > _MAX_CONTENT_SIZE:
+                return f"Content too large ({len(content):,} bytes). Max append size is {_MAX_CONTENT_SIZE:,} bytes."
+            existing_size = path.stat().st_size if path.exists() else 0
+            if existing_size + len(content) > _MAX_FILE_SIZE:
+                return (
+                    f"Append would exceed {_MAX_FILE_SIZE:,} byte file limit "
+                    f"(current: {existing_size:,}, append: {len(content):,})."
+                )
             with path.open("a") as f:
                 f.write(("\n" if path.exists() else "") + content)
             return f"Appended to '{project}' notes."

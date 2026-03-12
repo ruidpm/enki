@@ -18,6 +18,24 @@ from .integrity import compute_chain_hash, compute_data_hash
 
 log = structlog.get_logger()
 
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {"api_key", "password", "token", "secret", "authorization", "imap_password", "anthropic_api_key", "credential"}
+)
+
+
+def _sanitize_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Deep-copy params with sensitive keys replaced by '[REDACTED]'."""
+    sanitized: dict[str, Any] = {}
+    for key, value in params.items():
+        if key.lower() in _SENSITIVE_KEYS:
+            sanitized[key] = "[REDACTED]"
+        elif isinstance(value, dict):
+            sanitized[key] = _sanitize_params(value)
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tier1 (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +131,7 @@ class AuditDB:
             await self.log_tier2(
                 Tier2Event.TOOL_CALLED,
                 session_id,
-                {"tool": tool_name, "params": params},
+                {"tool": tool_name, "params": _sanitize_params(params)},
             )
 
     def purge_old_tier2(self, days: int = 30) -> int:

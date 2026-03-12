@@ -207,6 +207,54 @@ async def test_protected_paths_prepended_to_task(tool: RunClaudeCodeTool, notifi
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# H-04: Re-validate workspace path before Claude Code cwd
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_background_rejects_traversal_workspace_path(tmp_path: Path, notifier: MagicMock) -> None:
+    """workspace_path that escapes the workspaces base dir must be rejected."""
+    workspaces_base = tmp_path / "workspaces"
+    workspaces_base.mkdir()
+    tool = RunClaudeCodeTool(
+        notifier=notifier,
+        project_dir=tmp_path,
+        workspaces_base_dir=workspaces_base,
+    )
+    # Path traversal: workspace_path points outside workspaces_base
+    evil_path = str(workspaces_base / ".." / "etc")
+    await tool._run_background("bad1", "task", workspace_path=evil_path)
+    notifier.send.assert_awaited()
+    sent = notifier.send.call_args[0][0]
+    assert "invalid" in sent.lower() or "error" in sent.lower() or "outside" in sent.lower()
+
+
+@pytest.mark.asyncio
+async def test_background_accepts_valid_workspace_path(tmp_path: Path, notifier: MagicMock) -> None:
+    """Valid workspace_path inside base dir should proceed (and fail on subprocess, not validation)."""
+    workspaces_base = tmp_path / "workspaces"
+    workspaces_base.mkdir()
+    ws_dir = workspaces_base / "myproject"
+    ws_dir.mkdir()
+    tool = RunClaudeCodeTool(
+        notifier=notifier,
+        project_dir=tmp_path,
+        workspaces_base_dir=workspaces_base,
+    )
+    # This should pass validation but fail on subprocess (no claude binary)
+    with patch("src.tools.claude_code.asyncio.create_subprocess_exec", side_effect=FileNotFoundError("no claude")):
+        await tool._run_background("ok1", "task", workspace_path=str(ws_dir))
+    sent = notifier.send.call_args[0][0]
+    # Should NOT be a validation error — should be a spawn failure
+    assert "failed" in sent.lower() or "not found" in sent.lower()
+
+
+# ---------------------------------------------------------------------------
+# Cooldown
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_cooldown_blocks_rapid_respawn(tool: RunClaudeCodeTool) -> None:
     tool._last_spawn = time.time()

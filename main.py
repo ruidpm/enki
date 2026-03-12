@@ -427,10 +427,12 @@ def telegram() -> None:
             online = False
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(config.connectivity_timeout_seconds)
-                sock.connect(("8.8.8.8", 53))
-                sock.close()
-                online = True
+                try:
+                    sock.settimeout(config.connectivity_timeout_seconds)
+                    sock.connect(("8.8.8.8", 53))
+                    online = True
+                finally:
+                    sock.close()
             except OSError:
                 pass
 
@@ -550,6 +552,14 @@ def telegram() -> None:
         cancelled = job_registry.cancel_all()
         if cancelled:
             log.info("shutdown_cancelled_jobs", count=cancelled)
+
+        # Cancel any tracked agent background tasks (e.g. compaction)
+        for task in list(agent._background_tasks):
+            task.cancel()
+        if agent._background_tasks:
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*agent._background_tasks, return_exceptions=True)
+
         try:
             await asyncio.wait_for(
                 compactor.compact_session(agent.session_id),
@@ -559,6 +569,13 @@ def telegram() -> None:
             log.warning("compaction_timeout")
         except Exception as exc:
             log.warning("compaction_failed", error=str(exc))
+
+        # Cancel remaining fire-and-forget tasks (heartbeat, connectivity, health monitor)
+        current = asyncio.current_task()
+        for task in asyncio.all_tasks():
+            if task is not current and not task.done():
+                task.cancel()
+        log.info("shutdown_tasks_cancelled")
 
     bot.set_post_init(_on_startup)
     bot.set_post_shutdown(_on_shutdown)

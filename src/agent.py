@@ -93,6 +93,7 @@ class Agent:
         self._last_activity: float = time.monotonic()
         self._run_lock = asyncio.Lock()
         self._compactor: Any | None = None
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
         loop_detector.set_session(self._session_id)
         log.info("agent_init", session_id=self._session_id)
@@ -191,7 +192,9 @@ class Agent:
         log.info("agent_new_session", session_id=self._session_id)
 
         if self._compactor is not None:
-            asyncio.create_task(self._compact_old_session(old_session_id))
+            task = asyncio.create_task(self._compact_old_session(old_session_id))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     async def _compact_old_session(self, session_id: str) -> None:
         """Background compaction — errors are logged, never raised."""
@@ -307,10 +310,15 @@ class Agent:
             last = self._conversation[-1]
             if last.get("role") == "assistant":
                 content = last.get("content", [])
-                has_orphan = any(getattr(b, "type", None) == "tool_use" for b in (content if isinstance(content, list) else []))
-                if has_orphan:
-                    self._conversation.pop()
-                    log.warning("healed_orphaned_tool_use")
+                if isinstance(content, list):
+                    has_orphan = any(getattr(b, "type", None) == "tool_use" for b in content)
+                    if has_orphan:
+                        kept = [b for b in content if getattr(b, "type", None) != "tool_use"]
+                        if kept:
+                            last["content"] = kept
+                        else:
+                            self._conversation.pop()
+                        log.warning("healed_orphaned_tool_use")
 
         # Prune conversation if approaching context limit
         self._prune_conversation()

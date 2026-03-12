@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import tempfile
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -12,6 +14,28 @@ import structlog
 from ..guardrails.code_scanner import CodeScanner
 
 log = structlog.get_logger()
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write *content* to *path* atomically using tempfile + rename."""
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fd:
+            tmp_path = Path(fd.name)
+            fd.write(content)
+            fd.flush()
+        tmp_path.replace(path)
+    except BaseException:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
+        raise
 
 
 class EvolveNotifier(Protocol):
@@ -88,7 +112,7 @@ class ProposeTool:
         # Write to staging
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         pending_path = self._pending / f"{name}.py"
-        pending_path.write_text(code)
+        _atomic_write(pending_path, code)
 
         meta = {"name": name, "description": description, "code_hash": code_hash}
         (self._pending / f"{name}.json").write_text(json.dumps(meta, indent=2))
@@ -106,7 +130,7 @@ class ProposeTool:
 
         # Move to tools/
         target = self._tools_dir / f"{name}.py"
-        target.write_text(code)
+        _atomic_write(target, code)
         pending_path.unlink(missing_ok=True)
         (self._pending / f"{name}.json").unlink(missing_ok=True)
 

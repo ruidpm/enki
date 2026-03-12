@@ -289,6 +289,15 @@ class TelegramBot:
         if not isinstance(msg, Message) or not self._authorized_chat(msg.chat_id):
             return
 
+        # Verify the callback comes from the authorized user, not a different group member
+        if query.from_user is None or query.from_user.id != self._allowed_chat_id:
+            log.warning(
+                "callback_unauthorized_sender",
+                from_user_id=getattr(query.from_user, "id", None),
+                expected=self._allowed_chat_id,
+            )
+            return
+
         data = query.data or ""
         parts = data.split(":", 2)
         if len(parts) != 3 or parts[0] != "confirm":

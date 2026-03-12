@@ -144,7 +144,7 @@ async def test_on_message_error_sends_error_reply(bot: TelegramBot, agent: Magic
 # ---------------------------------------------------------------------------
 
 
-def _make_callback_update(data: str, chat_id: int = 12345) -> MagicMock:
+def _make_callback_update(data: str, chat_id: int = 12345, from_user_id: int | None = None) -> MagicMock:
     update = MagicMock()
     query = MagicMock()
     query.data = data
@@ -152,6 +152,9 @@ def _make_callback_update(data: str, chat_id: int = 12345) -> MagicMock:
     query.edit_message_reply_markup = AsyncMock()
     query.message = MagicMock(spec=Message)
     query.message.chat_id = chat_id
+    # from_user defaults to chat_id if not specified
+    query.from_user = MagicMock()
+    query.from_user.id = from_user_id if from_user_id is not None else chat_id
     update.callback_query = query
     return update
 
@@ -181,6 +184,38 @@ async def test_callback_resolves_pending_future_no(bot: TelegramBot) -> None:
 
     assert fut.done()
     assert fut.result() is False
+
+
+# ---------------------------------------------------------------------------
+# H-02: Verify Telegram callback sender ID
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_callback_wrong_from_user_ignored(bot: TelegramBot) -> None:
+    """Callback from a different user (but same chat) must be rejected."""
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future[bool] = loop.create_future()
+    bot._pending["my_key"] = fut
+
+    update = _make_callback_update("confirm:my_key:yes", chat_id=12345, from_user_id=99999)
+    await bot._on_callback(update, MagicMock())
+
+    assert not fut.done()  # future must NOT be resolved
+
+
+@pytest.mark.asyncio
+async def test_callback_correct_from_user_resolves(bot: TelegramBot) -> None:
+    """Callback from the authorized user should resolve the future."""
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future[bool] = loop.create_future()
+    bot._pending["my_key"] = fut
+
+    update = _make_callback_update("confirm:my_key:yes", chat_id=12345, from_user_id=12345)
+    await bot._on_callback(update, MagicMock())
+
+    assert fut.done()
+    assert fut.result() is True
 
 
 @pytest.mark.asyncio

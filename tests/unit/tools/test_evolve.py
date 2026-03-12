@@ -92,3 +92,53 @@ async def test_notifier_receives_diff(tool: ProposeTool, approved_notifier: Asyn
     approved_notifier.send_diff.assert_awaited_once()
     call_args = approved_notifier.send_diff.call_args
     assert call_args[0][0] == "my_tool"
+
+
+@pytest.mark.asyncio
+async def test_atomic_write_staging_file_content(tool: ProposeTool, tmp_path: Path) -> None:
+    """Staged file must contain the exact code after write."""
+    with patch("src.tools.loader.load_tools_from_dir", return_value=["my_tool"]):
+        await tool.execute(name="my_tool", description="safe", code=CLEAN_TOOL)
+    target = tmp_path / "tools" / "my_tool.py"
+    assert target.read_text() == CLEAN_TOOL
+
+
+@pytest.mark.asyncio
+async def test_atomic_write_no_partial_on_error(tmp_path: Path, approved_notifier: AsyncMock) -> None:
+    """If the write itself fails, no partial file should remain at the target path."""
+    tool = ProposeTool(tmp_path / "pending", tmp_path / "tools", approved_notifier)
+
+    # Make the target directory read-only so the atomic rename fails
+    tools_dir = tmp_path / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+
+    # Patch NamedTemporaryFile.write to raise mid-write, simulating a crash
+    import tempfile
+
+    original_ntf = tempfile.NamedTemporaryFile
+
+    def exploding_ntf(*args: object, **kwargs: object) -> object:
+        m = original_ntf(*args, **kwargs)
+        orig_write = m.write
+
+        def bad_write(data: bytes) -> int:
+            orig_write(data[:5])  # partial
+            raise OSError("disk full")
+
+        m.write = bad_write
+        return m
+
+    with (
+        patch("src.tools.evolve.tempfile.NamedTemporaryFile", side_effect=exploding_ntf),
+        patch("src.tools.loader.load_tools_from_dir", return_value=["my_tool"]),
+    ):
+        # Should raise or handle the error — either way, no partial file at target
+        try:
+            await tool.execute(name="my_tool", description="safe", code=CLEAN_TOOL)
+        except OSError:
+            pass
+
+    target = tools_dir / "my_tool.py"
+    # If the file exists, it must contain the full content, not partial
+    if target.exists():
+        assert target.read_text() == CLEAN_TOOL

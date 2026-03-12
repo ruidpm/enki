@@ -101,6 +101,63 @@ async def test_heals_orphaned_tool_use_on_next_turn(tmp_path: Any) -> None:
 
 
 @pytest.mark.asyncio
+async def test_heals_orphaned_tool_use_preserves_text_blocks(tmp_path: Any) -> None:
+    """Healing removes only tool_use blocks, keeping text blocks in the same message."""
+    agent = _make_agent(tmp_path)
+
+    # Build an assistant message with both a text block and an orphaned tool_use block
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "I'll look that up for you."
+
+    orphan_tool = _make_orphaned_tool_use_block()
+
+    agent._conversation.append({"role": "assistant", "content": [text_block, orphan_tool]})
+    assert len(agent._conversation) == 1
+
+    with patch.object(
+        agent._client.messages,
+        "create",
+        new=AsyncMock(return_value=_mock_text_response("Recovered.")),
+    ):
+        result = await agent.run_turn("hello after crash")
+
+    assert result == "Recovered."
+    # The original assistant message should still be there, but only with the text block
+    assert len(agent._conversation) == 3  # healed assistant, user, new assistant
+    healed = agent._conversation[0]
+    assert healed["role"] == "assistant"
+    assert len(healed["content"]) == 1
+    assert healed["content"][0].type == "text"
+    assert healed["content"][0].text == "I'll look that up for you."
+
+
+@pytest.mark.asyncio
+async def test_heals_orphaned_tool_use_removes_message_if_all_tool_use(tmp_path: Any) -> None:
+    """If the assistant message has ONLY tool_use blocks (no text), remove entirely."""
+    agent = _make_agent(tmp_path)
+
+    orphan1 = _make_orphaned_tool_use_block("toolu_1")
+    orphan2 = _make_orphaned_tool_use_block("toolu_2")
+
+    agent._conversation.append({"role": "assistant", "content": [orphan1, orphan2]})
+    assert len(agent._conversation) == 1
+
+    with patch.object(
+        agent._client.messages,
+        "create",
+        new=AsyncMock(return_value=_mock_text_response("OK")),
+    ):
+        result = await agent.run_turn("hello")
+
+    assert result == "OK"
+    # Message removed entirely, only user + new assistant remain
+    assert len(agent._conversation) == 2
+    assert agent._conversation[0]["role"] == "user"
+    assert agent._conversation[1]["role"] == "assistant"
+
+
+@pytest.mark.asyncio
 async def test_heals_orphaned_tool_use_logs_warning(tmp_path: Any) -> None:
     """Healing an orphan emits a warning log event (healed_orphaned_tool_use)."""
     import structlog.testing
@@ -245,3 +302,30 @@ async def test_concurrent_turns_produce_valid_conversation(tmp_path: Any) -> Non
     assert len(roles) == 4  # 2 user + 2 assistant
     for i, expected in enumerate(["user", "assistant", "user", "assistant"]):
         assert roles[i] == expected, f"position {i}: expected {expected}, got {roles[i]}"
+
+
+# ---------------------------------------------------------------------------
+# Background task tracking
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_background_compaction_task_is_tracked(tmp_path: Any) -> None:
+    """When new_session triggers compaction, the task is added to _background_tasks."""
+    agent = _make_agent(tmp_path)
+
+    mock_compactor = AsyncMock()
+    mock_compactor.compact_session = AsyncMock()
+    agent.set_compactor(mock_compactor)
+
+    agent.new_session()
+
+    # The task should be tracked
+    assert len(agent._background_tasks) == 1
+    task = next(iter(agent._background_tasks))
+
+    # Let it complete
+    await task
+
+    # After completion, the done callback removes it
+    assert len(agent._background_tasks) == 0

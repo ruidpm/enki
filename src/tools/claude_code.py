@@ -147,6 +147,7 @@ class RunClaudeCodeTool:
         cooldown_seconds: int = _DEFAULT_COOLDOWN,
         anthropic_client: object = None,
         summary_model: str = "",
+        workspaces_base_dir: Path | None = None,
     ) -> None:
         self._notifier = notifier
         self._project_dir = project_dir
@@ -154,6 +155,7 @@ class RunClaudeCodeTool:
         self._job_registry = job_registry
         self._timeout_seconds = timeout_seconds
         self._cooldown_seconds = cooldown_seconds
+        self._workspaces_base_dir = workspaces_base_dir
         self._last_spawn: float = 0.0
         self._output = OutputDelivery(
             notifier=notifier,
@@ -249,6 +251,25 @@ class RunClaudeCodeTool:
         language: str | None = None,
     ) -> None:
         """Run claude in a background asyncio task; notify when done."""
+        # Validate workspace_path stays inside the allowed base directory
+        if workspace_path is not None and self._workspaces_base_dir is not None:
+            try:
+                resolved = Path(workspace_path).resolve(strict=True)
+            except (OSError, ValueError) as exc:
+                log.error("workspace_path_invalid", job_id=job_id, error=str(exc))
+                await self._notifier.send(f"[Job {job_id}] Invalid workspace path: {exc}")
+                return
+            base_resolved = self._workspaces_base_dir.resolve()
+            if not str(resolved).startswith(str(base_resolved) + "/") and resolved != base_resolved:
+                log.error(
+                    "workspace_path_outside_base",
+                    job_id=job_id,
+                    resolved=str(resolved),
+                    base=str(base_resolved),
+                )
+                await self._notifier.send(f"[Job {job_id}] ERROR: workspace path is outside allowed directory.")
+                return
+
         run_dir = workspace_path or str(self._project_dir)
 
         # Inject temp CLAUDE.md into workspace if it doesn't already have one
