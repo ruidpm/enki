@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+from collections.abc import MutableMapping
 from datetime import UTC
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -16,7 +17,7 @@ import structlog
 class _SpinnerClearProcessor:
     """Clear the braille spinner line before structlog writes, preventing visual bleed."""
 
-    def __call__(self, logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    def __call__(self, logger: Any, method: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
         try:
             import src.interfaces.cli as _cli
 
@@ -76,14 +77,14 @@ def _release_pid_lock() -> None:
 
 
 class BuildResult(NamedTuple):
-    agent: object
-    config: object
-    compactor: object
-    schedule_store: object
-    manage_schedule_tool: object
+    agent: Any
+    config: Any
+    compactor: Any
+    schedule_store: Any
+    manage_schedule_tool: Any
 
 
-def _build_agent(notifier: object = None) -> BuildResult:
+def _build_agent(notifier: Any = None) -> BuildResult:
     """Wire up all dependencies and return a BuildResult."""
     import uuid
     from pathlib import Path
@@ -139,7 +140,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
     from src.tools.web_search import WebSearchTool
     from src.workspaces.store import WorkspaceStore
 
-    config = Settings()  # reads .env, fails fast on missing keys
+    config = Settings()  # type: ignore[call-arg]  # reads .env, fails fast on missing keys
 
     data_dir = config.audit_db_path.parent
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -357,7 +358,7 @@ def telegram() -> None:
     from src.interfaces.telegram_bot import TelegramBot
     from src.scheduler import Scheduler, default_jobs
 
-    config = Settings()
+    config = Settings()  # type: ignore[call-arg]
 
     bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id)
     result = _build_agent(notifier=bot)
@@ -471,7 +472,7 @@ def telegram() -> None:
 
         # Weekly facts cleanup — runs only if due and facts.md is large enough
         try:
-            await asyncio.wait_for(compactor.clean_facts(), timeout=30.0)  # type: ignore[attr-defined]
+            await asyncio.wait_for(compactor.clean_facts(), timeout=30.0)
         except Exception as exc:
             log.warning("facts_cleanup_startup_failed", error=str(exc))
 
@@ -481,7 +482,7 @@ def telegram() -> None:
         scheduler.stop()
         try:
             await asyncio.wait_for(
-                compactor.compact_session(agent.session_id),  # type: ignore[attr-defined]
+                compactor.compact_session(agent.session_id),
                 timeout=30.0,
             )
         except TimeoutError:
