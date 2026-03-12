@@ -41,7 +41,6 @@ class OutputDelivery:
                 "gh",
                 "gist",
                 "create",
-                "--secret",
                 "--desc",
                 description,
                 "--filename",
