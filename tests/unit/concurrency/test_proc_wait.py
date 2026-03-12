@@ -67,6 +67,7 @@ async def test_proc_wait_called_after_kill_in_pipeline_implement(
     notifier.ask_single_confirm = AsyncMock(return_value=True)
     notifier.send = AsyncMock()
     notifier.ask_free_text = AsyncMock(return_value=None)
+    notifier.ask_scope_approval = AsyncMock(return_value="approve")
 
     from src.pipeline.store import PipelineStore
     from src.teams.store import TeamsStore

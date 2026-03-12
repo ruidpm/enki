@@ -34,6 +34,7 @@ class TelegramBot:
         self._allowed_chat_id = int(allowed_chat_id)
         self._token = token
         self._pending: dict[str, asyncio.Future[bool]] = {}
+        self._pending_str: dict[str, asyncio.Future[str]] = {}
         self._pending_question: asyncio.Future[str] | None = None
         self._confirm_timeout: float = confirm_timeout
         self._agent: Any = None
@@ -317,6 +318,21 @@ class TelegramBot:
 
         data = query.data or ""
         parts = data.split(":", 2)
+        if len(parts) < 2:
+            return
+
+        # scope:{approve|reject|revise} — string-valued future
+        if parts[0] == "scope" and len(parts) == 2:
+            action = parts[1]
+            key = "scope_approval"
+            if key in self._pending_str:
+                fut_str = self._pending_str.pop(key)
+                if not fut_str.done():
+                    fut_str.set_result(action)
+            await query.edit_message_reply_markup(None)
+            return
+
+        # confirm:{key}:{yes|no} — bool-valued future
         if len(parts) != 3 or parts[0] != "confirm":
             return
 
@@ -411,6 +427,35 @@ class TelegramBot:
             self._pending_question = None
             log.warning("telegram_free_text_timeout")
             return None
+
+    async def ask_scope_approval(self, prompt: str, timeout_s: int = 600) -> str | None:
+        """3-button scope approval: Approve / Reject / Revise.
+
+        Returns "approve", "reject", free-text feedback (if Revise), or None on timeout.
+        """
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Approve", callback_data="scope:approve"),
+                    InlineKeyboardButton("Reject", callback_data="scope:reject"),
+                    InlineKeyboardButton("Revise", callback_data="scope:revise"),
+                ]
+            ]
+        )
+        await self._app.bot.send_message(self._allowed_chat_id, prompt, reply_markup=keyboard)
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future[str] = loop.create_future()
+        self._pending_str["scope_approval"] = fut
+        try:
+            choice = await asyncio.wait_for(fut, timeout=timeout_s)
+        except TimeoutError:
+            self._pending_str.pop("scope_approval", None)
+            log.warning("telegram_scope_approval_timeout")
+            return None
+        self._pending_str.pop("scope_approval", None)
+        if choice == "revise":
+            return await self.ask_free_text("What changes would you like?", timeout_s=timeout_s)
+        return choice  # "approve" or "reject"
 
     # ------------------------------------------------------------------
     # Run

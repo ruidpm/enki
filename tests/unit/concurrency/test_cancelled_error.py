@@ -58,6 +58,7 @@ async def test_cancelled_error_is_reraised_after_cleanup(
     notifier.ask_single_confirm = AsyncMock(return_value=True)
     notifier.send = AsyncMock()
     notifier.ask_free_text = AsyncMock(return_value=None)
+    notifier.ask_scope_approval = AsyncMock(return_value="approve")
 
     tool = RunPipelineTool(
         notifier=notifier,

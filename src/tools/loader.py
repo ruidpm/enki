@@ -30,6 +30,7 @@ _SKIP_FILES = frozenset(
         "github_tools",
         "claude_code",
         "spawn_agent",
+        "pipeline_ccc",
     }
 )
 

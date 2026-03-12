@@ -60,6 +60,7 @@ class TestNotifierProtocolConsolidation:
         mock.ask_single_confirm = AsyncMock()
         mock.ask_double_confirm = AsyncMock()
         mock.ask_free_text = AsyncMock()
+        mock.ask_scope_approval = AsyncMock()
         mock.send_diff = AsyncMock()
         mock.wait_for_approval = AsyncMock()
         assert isinstance(mock, Notifier)

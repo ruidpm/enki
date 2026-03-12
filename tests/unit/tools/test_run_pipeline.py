@@ -25,6 +25,7 @@ def _make_notifier(confirmed: bool = True) -> AsyncMock:
     n.ask_single_confirm = AsyncMock(return_value=confirmed)
     n.send = AsyncMock()
     n.ask_free_text = AsyncMock(return_value="approve")
+    n.ask_scope_approval = AsyncMock(return_value="approve")
     return n
 
 
@@ -379,6 +380,7 @@ def _make_notifier_with_free_text(answer: str | None) -> AsyncMock:
     n.ask_single_confirm = AsyncMock(return_value=True)
     n.send = AsyncMock()
     n.ask_free_text = AsyncMock(return_value=answer)
+    n.ask_scope_approval = AsyncMock(return_value="approve")
     return n
 
 

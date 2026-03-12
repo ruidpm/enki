@@ -197,6 +197,27 @@ def _build_agent(notifier: Any = None) -> BuildResult:
             except TimeoutError:
                 return None
 
+        async def ask_scope_approval(self, prompt: str, timeout_s: int = 600) -> str | None:
+            click.echo(f"\n{prompt}")
+            click.echo("[a]pprove / [r]eject / [v] revise")
+            import asyncio
+
+            from src.interfaces.cli import _prompt_async
+
+            try:
+                answer = await asyncio.wait_for(_prompt_async("Choice: "), timeout=timeout_s)
+            except TimeoutError:
+                return None
+            if answer and answer.strip().lower().startswith("a"):
+                return "approve"
+            if answer and answer.strip().lower().startswith("r"):
+                return "reject"
+            # Revise — ask for feedback
+            try:
+                return await asyncio.wait_for(_prompt_async("Feedback: "), timeout=timeout_s)
+            except TimeoutError:
+                return None
+
     _notifier_instance = notifier if notifier is not None else _CliNotifier()
 
     # Cost guard — created early so tools can report sub-agent costs

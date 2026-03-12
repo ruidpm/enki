@@ -67,7 +67,7 @@ STAGE_GATES: dict[str, StageGate] = {
         max_retries=0,
     ),
     "test": StageGate(
-        required_keywords=["pass", "fail", "coverage"],
+        required_keywords=[],  # handled in _check_structural special case
         min_length=100,
         llm_judge_prompt=None,
         pass_threshold=0.0,
@@ -94,7 +94,10 @@ STAGE_GATES: dict[str, StageGate] = {
 }
 
 # Regex for file path references in plan artifacts
-_FILE_PATH_RE = re.compile(r"(?:src/|tests/|[\w/]+\.(?:py|ts|go|rs|js|tsx|jsx))")
+_FILE_PATH_RE = re.compile(
+    r"(?:src/|tests/|lib/|pkg/|cmd/|internal/|"
+    r"[\w./]+\.(?:py|ts|go|rs|js|tsx|jsx|html|css|json|yaml|yml|toml|sh|sql|md|svelte|vue|rb|java|kt|swift|c|h|cpp))"
+)
 
 
 def _retry(reason: str) -> GateResult:
@@ -135,6 +138,14 @@ def _check_structural(stage: str, gate: StageGate, artifact: str) -> str | None:
             return "Missing 'test' keyword in plan"
         if len(file_refs) < 3:
             return f"Need >= 3 file path references, found {len(file_refs)}"
+
+    elif stage == "test":
+        has_header = any(marker in lower for marker in ["test result", "test summary", "## test"])
+        has_outcome = any(word in lower for word in ["passed", "failed", "✓", "✗"])
+        if not has_header:
+            return "Missing test report header (e.g. 'Test Results', 'Test Summary', '## Test')"
+        if not has_outcome:
+            return "Missing test outcome indicators (passed/failed/✓/✗)"
 
     elif stage == "pr":
         if not artifact.strip().startswith("http"):

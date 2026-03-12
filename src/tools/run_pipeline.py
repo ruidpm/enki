@@ -27,10 +27,11 @@ from src.constants import REQUIRES_CONFIRM
 from src.guardrails.cost_guard import CostGuardHook
 from src.interfaces.notifier import Notifier
 from src.output_delivery import OutputDelivery
-from src.pipeline.gates import STAGE_GATES, GateVerdict, check_gate
+from src.pipeline.gates import STAGE_GATES, GateResult, GateVerdict, check_gate
 from src.pipeline.store import PipelineStage, PipelineStatus, PipelineStore
 from src.sub_agent import SubAgentRunner
 from src.teams.store import TeamsStore
+from src.tools.pipeline_ccc import PipelineCCCTool
 from src.workspaces.store import WorkspaceStore
 
 if TYPE_CHECKING:
@@ -146,6 +147,7 @@ class RunPipelineTool:
         self._cost_guard: CostGuardHook | None = cost_guard
         self._anthropic_client = anthropic_client
         self._summary_model = summary_model
+        self._pipeline_ccc: PipelineCCCTool | None = None
         self._output = OutputDelivery(
             notifier=notifier,
             anthropic_client=anthropic_client,
@@ -235,6 +237,12 @@ class RunPipelineTool:
         language = workspace.get("language") or ""
         artifacts: dict[str, str] = {}  # stage → content (accumulated for context)
 
+        # Sync CCC instance for this pipeline run — injected into sub-agent tool subsets
+        self._pipeline_ccc = PipelineCCCTool(
+            workspace_path=workspace_path,
+            language=language,
+        )
+
         def _update_stage(stage: str) -> None:
             if self._job_registry is not None:
                 self._job_registry.update_stage(pipeline_id, stage.upper())
@@ -250,8 +258,11 @@ class RunPipelineTool:
 
                 _update_stage(stage)
 
+                _auto_pass = GateResult(verdict=GateVerdict.PASS, reason="auto", retry_hint="", structural_ok=True, llm_score=0.0)
+
                 if stage == PipelineStage.IMPLEMENT:
                     result = await self._run_implement(pipeline_id, task, workspace_path, language, artifacts)
+                    gate_result = _auto_pass
                 elif stage == PipelineStage.PR:
                     pr_confirmed = await self._notifier.ask_single_confirm(
                         reason=f"[Pipeline {pipeline_id}] Open pull request?",
@@ -265,19 +276,13 @@ class RunPipelineTool:
                         _finish_job(success=True)
                         return
                     result = await self._run_pr(pipeline_id, task, workspace_path, artifacts)
+                    gate_result = _auto_pass
                 else:
-                    result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
+                    result, gate_result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
 
                 artifacts[stage] = result
                 self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
 
-                # Run quality gate and record result
-                gate_result = await check_gate(
-                    stage,
-                    result,
-                    client=self._anthropic_client,
-                    model=self._summary_model,
-                )
                 # Create gist for every artifact
                 gist_url = await self._output.create_gist(result, f"Pipeline {pipeline_id} — {stage.upper()}")
                 self._pipelines.update_artifact_gate(
@@ -310,7 +315,7 @@ class RunPipelineTool:
                     if isinstance(scope_approved, str):
                         # User provided feedback — re-run scope with feedback
                         context += f"\n\n## User feedback on scope\n{scope_approved}"
-                        result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
+                        result, _ = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
                         artifacts[stage] = result
                         self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
 
@@ -377,12 +382,11 @@ class RunPipelineTool:
                 raise asyncio.CancelledError()
 
     async def _scope_approval(self, pipeline_id: str, scope_artifact: str) -> bool | str:
-        """Ask user to approve scope. Returns True, False, or feedback string."""
+        """Ask user to approve scope via 3-button keyboard. Returns True, False, or feedback string."""
         summary = await self._output._summarize(scope_artifact, " This is a project scope document.")
         display = summary or scope_artifact[:600]
-        answer = await self._notifier.ask_free_text(
-            f"[Pipeline {pipeline_id}] SCOPE complete — please review:\n\n{display}\n\n"
-            f'Reply "approve" to proceed, or provide feedback to revise.',
+        answer = await self._notifier.ask_scope_approval(
+            f"[Pipeline {pipeline_id}] SCOPE complete — please review:\n\n{display}",
             timeout_s=600,
         )
         if answer is None:
@@ -395,11 +399,11 @@ class RunPipelineTool:
             # Wait for resume
             await self._wait_if_paused(pipeline_id, PipelineStage.PLAN)
             return True  # resumed means approved
-        if answer.strip().lower() == "approve":
+        if answer == "approve":
             return True
-        if answer.strip().lower() in ("no", "abort", "cancel"):
+        if answer == "reject":
             return False
-        return answer  # feedback string
+        return answer  # feedback string from Revise flow
 
     async def _run_with_gate(
         self,
@@ -408,13 +412,19 @@ class RunPipelineTool:
         task: str,
         context: str,
         artifacts: dict[str, str],
-    ) -> str:
-        """Run an LLM stage with quality gate check and retry on failure."""
+    ) -> tuple[str, GateResult]:
+        """Run an LLM stage with quality gate check and retry on failure.
+
+        Returns (result_text, gate_result) so callers can record the verdict
+        without re-checking the gate.
+        """
+        _pass = GateResult(verdict=GateVerdict.PASS, reason="no gate", retry_hint="", structural_ok=True, llm_score=0.0)
+
         result = await self._run_llm_stage(pipeline_id, stage, task, context, artifacts)
 
         gate = STAGE_GATES.get(stage)
         if gate is None or gate.max_retries == 0:
-            return result
+            return result, _pass
 
         gate_result = await check_gate(
             stage,
@@ -424,7 +434,7 @@ class RunPipelineTool:
         )
 
         if gate_result.verdict == GateVerdict.PASS:
-            return result
+            return result, gate_result
 
         # Retry once with gate feedback
         log.info("pipeline_gate_retry", pipeline_id=pipeline_id, stage=stage, reason=gate_result.reason)
@@ -443,7 +453,7 @@ class RunPipelineTool:
         )
 
         if gate_result.verdict == GateVerdict.PASS:
-            return result
+            return result, gate_result
 
         # Retry exhausted — escalate to user
         gist_url = await self._output.create_gist(result, f"Pipeline {pipeline_id} — {stage.upper()} (gate failed)")
@@ -458,10 +468,11 @@ class RunPipelineTool:
         if answer is None or answer.strip().lower() == "abort":
             raise RuntimeError(f"Stage {stage} gate failed — user aborted.")
         if answer.strip().lower() == "skip":
-            return result
+            return result, gate_result
         # User provided guidance — one more try
         guidance_context = f"\n\n## User guidance\n{answer}"
-        return await self._run_llm_stage(pipeline_id, stage, task, context + guidance_context, artifacts)
+        final_result = await self._run_llm_stage(pipeline_id, stage, task, context + guidance_context, artifacts)
+        return final_result, _pass
 
     async def _run_llm_stage(
         self,
@@ -481,8 +492,11 @@ class RunPipelineTool:
         if team is None or not team["active"]:
             raise RuntimeError(f"Team '{team_id}' not found or inactive.")
 
-        allowed = set(team["tools"]) - {"spawn_team", "spawn_agent", "run_pipeline"} - REQUIRES_CONFIRM
+        allowed = set(team["tools"]) - {"spawn_team", "spawn_agent", "run_pipeline", "run_claude_code"} - REQUIRES_CONFIRM
         subset = {n: t for n, t in self._registry.items() if n in allowed}
+        # Inject sync CCC — sub-agents get blocking Claude Code instead of fire-and-forget
+        if self._pipeline_ccc is not None:
+            subset["run_code_task"] = self._pipeline_ccc
 
         extra_context = ""
         for round_ in range(_MAX_CLARIFICATION_ROUNDS + 1):

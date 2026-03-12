@@ -171,6 +171,24 @@ class TestPlanGate:
         result = await check_gate("plan", artifact)
         assert result.verdict == GateVerdict.RETRY
 
+    @pytest.mark.asyncio
+    async def test_passes_with_html_css_json_files(self) -> None:
+        artifact = _pad(
+            "We will test the changes in index.html, style.css, and config.json.",
+            400,
+        )
+        result = await check_gate("plan", artifact)
+        assert result.verdict == GateVerdict.PASS
+
+    @pytest.mark.asyncio
+    async def test_passes_with_go_rust_dirs(self) -> None:
+        artifact = _pad(
+            "We will test changes in cmd/server, internal/handler.go, and pkg/util.go.",
+            400,
+        )
+        result = await check_gate("plan", artifact)
+        assert result.verdict == GateVerdict.PASS
+
 
 # ── IMPLEMENT gate ───────────────────────────────────────────────
 
@@ -193,15 +211,45 @@ class TestImplementGate:
 
 class TestTestGate:
     @pytest.mark.asyncio
-    async def test_passes_with_keyword(self) -> None:
-        artifact = _pad("All tests pass. Coverage is at 95%.", 100)
+    async def test_passes_with_header_and_outcome(self) -> None:
+        artifact = _pad("Test Results: All 12 tests passed. Coverage is at 95%.", 100)
         result = await check_gate("test", artifact)
         assert result.verdict == GateVerdict.PASS
 
     @pytest.mark.asyncio
-    async def test_fails_without_keywords(self) -> None:
-        artifact = _pad("Ran the suite and everything looks good.", 100)
+    async def test_passes_with_markdown_header(self) -> None:
+        artifact = _pad("## Test\n\n5 passed, 0 failed.", 100)
         result = await check_gate("test", artifact)
+        assert result.verdict == GateVerdict.PASS
+
+    @pytest.mark.asyncio
+    async def test_passes_with_checkmarks(self) -> None:
+        artifact = _pad("Test Summary\n✓ unit tests\n✓ integration tests", 100)
+        result = await check_gate("test", artifact)
+        assert result.verdict == GateVerdict.PASS
+
+    @pytest.mark.asyncio
+    async def test_fails_without_header(self) -> None:
+        artifact = _pad("All 12 tests passed and coverage is at 95%.", 100)
+        result = await check_gate("test", artifact)
+        assert result.verdict == GateVerdict.RETRY
+        assert "header" in result.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_fails_without_outcome(self) -> None:
+        artifact = _pad("Test Results: Ran the suite and everything looks good.", 100)
+        result = await check_gate("test", artifact)
+        assert result.verdict == GateVerdict.RETRY
+        assert "outcome" in result.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_cooldown_garbage(self) -> None:
+        """Cooldown text that contains 'fail' but isn't a real test report."""
+        garbage = _pad(
+            "[BLOCKED] Claude Code cooldown active — 240s remaining. Failed to spawn. Still in cooldown, cannot pass through.",
+            100,
+        )
+        result = await check_gate("test", garbage)
         assert result.verdict == GateVerdict.RETRY
 
 
