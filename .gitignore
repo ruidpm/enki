@@ -21,8 +21,7 @@ venv/
 htmlcov/
 
 # Data (never commit user data)
-data/*.db
-data/projects/
+data/
 memory/logs/
 memory/facts.md
 
