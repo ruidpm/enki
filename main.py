@@ -83,6 +83,7 @@ class BuildResult(NamedTuple):
     schedule_store: Any
     manage_schedule_tool: Any
     job_registry: Any
+    audit: Any
 
 
 def _build_agent(notifier: Any = None) -> BuildResult:
@@ -349,6 +350,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         schedule_store=schedule_store,
         manage_schedule_tool=_manage_schedule_tool,
         job_registry=job_registry,
+        audit=audit,
     )
 
 
@@ -384,6 +386,10 @@ def telegram() -> None:
     job_registry = result.job_registry
     bot.set_agent(agent)
     bot.set_job_registry(job_registry)
+
+    from src.audit.query import AuditQuery
+
+    bot.set_audit_query(AuditQuery(db=result.audit))
 
     # Seed default jobs on first run, then load all from store
     from src.schedule.store import ScheduleStore as _SS

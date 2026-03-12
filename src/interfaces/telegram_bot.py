@@ -38,6 +38,7 @@ class TelegramBot:
         self._confirm_timeout: float = confirm_timeout
         self._agent: Any = None
         self._job_registry: Any = None
+        self._audit_query: Any = None
         self._post_init_cb: Any = None
         self._post_shutdown_cb: Any = None
         self._turn_lock = asyncio.Lock()
@@ -51,6 +52,9 @@ class TelegramBot:
 
     def set_job_registry(self, registry: object) -> None:
         self._job_registry = registry
+
+    def set_audit_query(self, audit_query: object) -> None:
+        self._audit_query = audit_query
 
     def _register_handlers(self) -> None:
         self._app.add_handler(CommandHandler("start", self._cmd_start))
@@ -86,9 +90,22 @@ class TelegramBot:
         if not self._authorized(update):
             return
         assert self._agent is not None
-        daily = self._agent.daily_cost_usd
-        monthly = self._agent.monthly_cost_usd
         tokens = self._agent.session_tokens
+
+        if self._audit_query is not None:
+            from datetime import UTC, datetime
+
+            now = datetime.now(tz=UTC)
+            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            daily_data = self._audit_query.get_costs(since=day_start)
+            monthly_data = self._audit_query.get_costs(since=month_start)
+            daily = daily_data["total_cost_usd"]
+            monthly = monthly_data["total_cost_usd"]
+        else:
+            daily = self._agent.daily_cost_usd
+            monthly = self._agent.monthly_cost_usd
+
         await update.message.reply_text(  # type: ignore[union-attr]
             f"Session tokens: {tokens:,}\nToday: ${daily:.4f}\nThis month: ${monthly:.4f}"
         )

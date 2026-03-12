@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram import Message
 
 from src.interfaces.telegram_bot import TelegramBot
+
+
+def _today() -> datetime:
+    return datetime.now(tz=UTC)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -98,13 +104,41 @@ async def test_cmd_start_unauthorized(bot: TelegramBot) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cmd_cost(bot: TelegramBot, agent: MagicMock) -> None:
+async def test_cmd_cost_uses_audit_query_for_daily_monthly(bot: TelegramBot, agent: MagicMock) -> None:
+    """Daily and monthly costs must come from the persistent audit DB, not in-memory counters."""
     bot.set_agent(agent)
+
+    # Mock audit query returning different daily vs monthly costs
+    audit_query = MagicMock()
+    audit_query.get_costs = MagicMock(
+        side_effect=lambda since=None: {
+            "total_cost_usd": 5.50 if since and since.day == _today().day else 42.00,
+            "total_input_tokens": 100_000,
+            "total_output_tokens": 50_000,
+        }
+    )
+    bot.set_audit_query(audit_query)
+
     update = _make_update(chat_id=12345)
     await bot._cmd_cost(update, MagicMock())
     update.message.reply_text.assert_awaited_once()
     text = update.message.reply_text.call_args[0][0]
-    assert "500" in text  # session_tokens
+    # Session tokens from in-memory agent
+    assert "500" in text
+    # Daily and monthly should be DIFFERENT values from the audit DB
+    assert audit_query.get_costs.call_count == 2  # once for daily, once for monthly
+
+
+@pytest.mark.asyncio
+async def test_cmd_cost_without_audit_query_falls_back(bot: TelegramBot, agent: MagicMock) -> None:
+    """Without audit query, /cost should still work using in-memory counters."""
+    bot.set_agent(agent)
+    # No audit_query set
+    update = _make_update(chat_id=12345)
+    await bot._cmd_cost(update, MagicMock())
+    update.message.reply_text.assert_awaited_once()
+    text = update.message.reply_text.call_args[0][0]
+    assert "500" in text
 
 
 # ---------------------------------------------------------------------------
