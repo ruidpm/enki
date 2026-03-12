@@ -446,6 +446,27 @@ def telegram() -> None:
 
             await asyncio.sleep(60)
 
+    async def _system_health_monitor() -> None:
+        """Run system health checks every 30 min; route problems through the Agent."""
+        import asyncio
+
+        from src.monitoring.system_monitor import SystemMonitor
+
+        data_dir = config.audit_db_path.parent
+        monitor = SystemMonitor(data_dir=data_dir)
+
+        while True:
+            await asyncio.sleep(1800)  # 30 minutes
+            try:
+                alerts = monitor.run_checks()
+                msg = SystemMonitor.format_alerts(alerts)
+                if msg:
+                    log.warning("system_health_alerts", count=len(alerts))
+                    response = await agent.run_turn(f"SYSTEM: {msg}\n\nInform the user about these issues and suggest actions.")
+                    await bot.send(response)
+            except Exception as exc:
+                log.warning("system_health_monitor_failed", error=str(exc))
+
     async def _on_startup(_app: object) -> None:
         import asyncio
         import time
@@ -509,6 +530,7 @@ def telegram() -> None:
         # Background tasks
         asyncio.create_task(_heartbeat_writer())
         asyncio.create_task(_connectivity_monitor())
+        asyncio.create_task(_system_health_monitor())
 
         # Weekly facts cleanup — runs only if due and facts.md is large enough
         try:
