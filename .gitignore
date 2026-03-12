@@ -38,3 +38,6 @@ plans/
 
 # Workspaces (local scratch dirs)
 workspaces/
+
+# Local docs (never commit)
+docs/
