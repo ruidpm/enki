@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
 import anthropic
+import anthropic.types
 import structlog
 from anthropic.types import TextBlock, ToolUseBlock
 
 log = structlog.get_logger()
 
 _MAX_STEPS = 80  # enough for multi-section plans and deep research
+_MAX_API_RETRIES = 3
+_RETRY_DELAYS = (1.0, 2.0, 4.0)
 
 
 class SubAgentRunner:
@@ -40,6 +44,29 @@ class SubAgentRunner:
         self._on_cost = on_cost
         self._client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key)
 
+    async def _api_call_with_retry(self, **kwargs: Any) -> anthropic.types.Message:
+        """Call messages.create with retry on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_API_RETRIES):
+            try:
+                return await asyncio.wait_for(
+                    self._client.messages.create(**kwargs),
+                    timeout=60.0,
+                )
+            except (anthropic.APIConnectionError, anthropic.APITimeoutError, TimeoutError) as exc:
+                last_exc = exc
+                if attempt < _MAX_API_RETRIES - 1:
+                    delay = _RETRY_DELAYS[attempt]
+                    log.warning(
+                        "sub_agent_api_retry",
+                        label=self._label,
+                        attempt=attempt + 1,
+                        delay=delay,
+                        error=str(exc),
+                    )
+                    await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
     def _tool_defs(self) -> list[dict[str, Any]]:
         return [
             {
@@ -64,13 +91,17 @@ class SubAgentRunner:
         total_tokens = 0
 
         for step in range(self._max_steps):
-            response = await self._client.messages.create(
-                model=self._model,
-                max_tokens=self._max_tokens,
-                system=system,
-                tools=tool_defs if tool_defs else [],  # type: ignore[arg-type]
-                messages=messages,  # type: ignore[arg-type]
-            )
+            try:
+                response = await self._api_call_with_retry(
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    system=system,
+                    tools=tool_defs if tool_defs else [],
+                    messages=messages,
+                )
+            except (anthropic.APIConnectionError, anthropic.APITimeoutError, TimeoutError) as exc:
+                log.error("sub_agent_api_exhausted", label=self._label, error=str(exc))
+                return f"[ERROR] API unavailable after {_MAX_API_RETRIES} retries: {exc}", total_tokens
 
             step_in = response.usage.input_tokens
             step_out = response.usage.output_tokens

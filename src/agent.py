@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import Any
 
 import anthropic
+import anthropic.types
 import structlog
 import structlog.contextvars
 
@@ -178,6 +179,31 @@ class Agent:
             ModelTier.OPUS: self._config.opus_model,
         }[tier]
 
+    _MAX_API_RETRIES = 3
+    _RETRY_DELAYS = (1.0, 2.0, 4.0)
+
+    async def _api_call_with_retry(self, **kwargs: Any) -> anthropic.types.Message:
+        """Call messages.create with retry on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_API_RETRIES):
+            try:
+                return await asyncio.wait_for(
+                    self._client.messages.create(**kwargs),
+                    timeout=60.0,
+                )
+            except (anthropic.APIConnectionError, anthropic.APITimeoutError, TimeoutError) as exc:
+                last_exc = exc
+                if attempt < self._MAX_API_RETRIES - 1:
+                    delay = self._RETRY_DELAYS[attempt]
+                    log.warning(
+                        "api_retry",
+                        attempt=attempt + 1,
+                        delay=delay,
+                        error=str(exc),
+                    )
+                    await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [
             {
@@ -269,13 +295,17 @@ class Agent:
 
         # Agentic loop
         for _autonomous_turn in range(self._config.max_autonomous_turns + 1):
-            response = await self._client.messages.create(
-                model=model,
-                max_tokens=4096,
-                system=system_block,  # type: ignore[arg-type]
-                tools=tools,  # type: ignore[arg-type]
-                messages=self._conversation,  # type: ignore[arg-type]
-            )
+            try:
+                response = await self._api_call_with_retry(
+                    model=model,
+                    max_tokens=4096,
+                    system=system_block,
+                    tools=tools,
+                    messages=self._conversation,
+                )
+            except (anthropic.APIConnectionError, anthropic.APITimeoutError, TimeoutError) as exc:
+                log.error("api_exhausted_retries", error=str(exc))
+                return "I'm having trouble reaching the API right now. Please try again in a moment."
 
             # Track cost
             usage = response.usage

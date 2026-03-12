@@ -91,6 +91,16 @@ class JobRegistry:
         if error:
             self._jobs[job_id]["error"] = error
 
+    def cancel_all(self) -> int:
+        """Cancel all running asyncio tasks. Returns count of tasks cancelled."""
+        cancelled = 0
+        for job in self._jobs.values():
+            task: asyncio.Task[Any] | None = job.get("_task")
+            if task is not None and not task.done():
+                task.cancel()
+                cancelled += 1
+        return cancelled
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         """Return a copy of the job record, with elapsed_s computed."""
         job = self._jobs.get(job_id)

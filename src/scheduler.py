@@ -198,6 +198,15 @@ def default_jobs() -> list[ScheduledJob]:
             prompt=("Check for any tasks due in the next 48 hours and remind me of upcoming deadlines."),
         ),
         ScheduledJob(
+            job_id="audit_verification",
+            cron="0 6 * * *",
+            prompt=(
+                "Run an audit verification check. Use the audit tool to verify "
+                "the integrity of the audit trail and check for anomalies in the "
+                "last 24 hours. Report any issues found."
+            ),
+        ),
+        ScheduledJob(
             job_id="eod_team_report",
             cron="0 21 * * *",
             prompt=(

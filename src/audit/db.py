@@ -57,6 +57,8 @@ class AuditDB:
     def _conn(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self._path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=FULL")
         try:
             yield conn
             conn.commit()
