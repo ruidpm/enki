@@ -1,4 +1,5 @@
 """SQLite-backed persistent team registry."""
+
 from __future__ import annotations
 
 import asyncio
@@ -58,17 +59,13 @@ class TeamsStore:
         self._conn.commit()
 
     def get_team(self, team_id: str) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            "SELECT * FROM teams WHERE team_id = ?", (team_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM teams WHERE team_id = ?", (team_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_team(row)
 
     def list_teams(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM teams WHERE active = 1 ORDER BY created_at"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM teams WHERE active = 1 ORDER BY created_at").fetchall()
         return [self._row_to_team(r) for r in rows]
 
     def update_team(
@@ -96,9 +93,7 @@ class TeamsStore:
         return True
 
     def deactivate_team(self, team_id: str) -> None:
-        self._conn.execute(
-            "UPDATE teams SET active = 0 WHERE team_id = ?", (team_id,)
-        )
+        self._conn.execute("UPDATE teams SET active = 0 WHERE team_id = ?", (team_id,))
         self._conn.commit()
 
     def log_task(
@@ -214,8 +209,12 @@ class TeamsStore:
     ) -> None:
         async with self._lock:
             self.log_task(
-                team_id, task, result,
-                tokens_used=tokens_used, success=success, duration_s=duration_s,
+                team_id,
+                task,
+                result,
+                tokens_used=tokens_used,
+                success=success,
+                duration_s=duration_s,
             )
 
     async def monthly_tokens_used_async(self, team_id: str) -> int:

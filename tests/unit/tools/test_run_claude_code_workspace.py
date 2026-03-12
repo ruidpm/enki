@@ -1,4 +1,5 @@
 """Tests for workspace_id support in RunClaudeCodeTool."""
+
 from __future__ import annotations
 
 import asyncio
@@ -56,10 +57,9 @@ def _mock_spawn_seq(*procs: MagicMock) -> AsyncMock:
 # workspace_id routes CCC to workspace directory
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_workspace_id_runs_ccc_in_workspace_dir(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_workspace_id_runs_ccc_in_workspace_dir(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     workspace_path = str(tmp_path / "myrepo")
     claude_proc = _make_proc()
     diff_proc = _make_proc(stdout=b"")
@@ -72,9 +72,7 @@ async def test_workspace_id_runs_ccc_in_workspace_dir(
 
 
 @pytest.mark.asyncio
-async def test_no_workspace_id_uses_project_dir(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_no_workspace_id_uses_project_dir(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     claude_proc = _make_proc()
     diff_proc = _make_proc(stdout=b"")
 
@@ -89,10 +87,9 @@ async def test_no_workspace_id_uses_project_dir(
 # Temp CLAUDE.md injection
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_temp_claude_md_written_before_ccc_and_removed_after(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_temp_claude_md_written_before_ccc_and_removed_after(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     workspace_dir = tmp_path / "myrepo"
     workspace_dir.mkdir(exist_ok=True)
     claude_md = workspace_dir / "CLAUDE.md"
@@ -109,7 +106,8 @@ async def test_temp_claude_md_written_before_ccc_and_removed_after(
 
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", side_effect=fake_exec):
         await tool._run_background(
-            "job1", "add feature",
+            "job1",
+            "add feature",
             workspace_path=str(workspace_dir),
             language="typescript",
         )
@@ -119,9 +117,7 @@ async def test_temp_claude_md_written_before_ccc_and_removed_after(
 
 
 @pytest.mark.asyncio
-async def test_temp_claude_md_contains_language_rules(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_temp_claude_md_contains_language_rules(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     workspace_dir = tmp_path / "myrepo"
     workspace_dir.mkdir(exist_ok=True)
     claude_md = workspace_dir / "CLAUDE.md"
@@ -135,7 +131,8 @@ async def test_temp_claude_md_contains_language_rules(
 
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", side_effect=fake_exec):
         await tool._run_background(
-            "job1", "add feature",
+            "job1",
+            "add feature",
             workspace_path=str(workspace_dir),
             language="typescript",
         )
@@ -145,9 +142,7 @@ async def test_temp_claude_md_contains_language_rules(
 
 
 @pytest.mark.asyncio
-async def test_temp_claude_md_removed_even_on_ccc_error(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_temp_claude_md_removed_even_on_ccc_error(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     workspace_dir = tmp_path / "myrepo"
     workspace_dir.mkdir(exist_ok=True)
     claude_md = workspace_dir / "CLAUDE.md"
@@ -156,7 +151,8 @@ async def test_temp_claude_md_removed_even_on_ccc_error(
 
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", _mock_spawn_seq(claude_proc)):
         await tool._run_background(
-            "job1", "bad task",
+            "job1",
+            "bad task",
             workspace_path=str(workspace_dir),
             language="python",
         )
@@ -165,9 +161,7 @@ async def test_temp_claude_md_removed_even_on_ccc_error(
 
 
 @pytest.mark.asyncio
-async def test_existing_claude_md_preserved(
-    tool: RunClaudeCodeTool, tmp_path: Path
-) -> None:
+async def test_existing_claude_md_preserved(tool: RunClaudeCodeTool, tmp_path: Path) -> None:
     """If a CLAUDE.md already exists in the workspace, don't overwrite it."""
     workspace_dir = tmp_path / "myrepo"
     workspace_dir.mkdir(exist_ok=True)
@@ -180,7 +174,8 @@ async def test_existing_claude_md_preserved(
 
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", _mock_spawn_seq(claude_proc, diff_proc)):
         await tool._run_background(
-            "job1", "add feature",
+            "job1",
+            "add feature",
             workspace_path=str(workspace_dir),
             language="python",
         )
@@ -192,14 +187,11 @@ async def test_existing_claude_md_preserved(
 # execute() resolves workspace_id → workspace_path
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_execute_with_valid_workspace_id(
-    tool: RunClaudeCodeTool, notifier: MagicMock, tmp_path: Path
-) -> None:
+async def test_execute_with_valid_workspace_id(tool: RunClaudeCodeTool, notifier: MagicMock, tmp_path: Path) -> None:
     with patch.object(tool, "_run_background", new=AsyncMock()) as mock_bg:
-        result = await tool.execute(
-            task="add a feature", reason="test", workspace_id="myrepo"
-        )
+        result = await tool.execute(task="add a feature", reason="test", workspace_id="myrepo")
         await asyncio.sleep(0)
 
     assert "job" in result.lower() or "background" in result.lower()
@@ -212,9 +204,7 @@ async def test_execute_with_valid_workspace_id(
 async def test_execute_with_unknown_workspace_id_returns_error(
     tool: RunClaudeCodeTool,
 ) -> None:
-    result = await tool.execute(
-        task="add feature", reason="test", workspace_id="nonexistent"
-    )
+    result = await tool.execute(task="add feature", reason="test", workspace_id="nonexistent")
     assert "error" in result.lower() or "not found" in result.lower()
 
 

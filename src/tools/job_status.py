@@ -1,4 +1,5 @@
 """Job status tool — query running and recent background jobs."""
+
 from __future__ import annotations
 
 import math

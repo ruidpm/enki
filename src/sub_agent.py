@@ -1,4 +1,5 @@
 """Sub-agent runner — isolated agentic loop with restricted tool subset."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -78,6 +79,7 @@ class SubAgentRunner:
                 self._on_tokens(step_in, step_out)
             if self._on_cost is not None:
                 from src.costs import model_cost_usd
+
                 cost = model_cost_usd(self._model, step_in, step_out)
                 self._on_cost(step_in, step_out, cost)
 
@@ -105,11 +107,13 @@ class SubAgentRunner:
                         result_text = f"[ERROR] {exc}"
                         log.error("sub_agent_tool_error", tool=tu.name, error=str(exc))
 
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu.id,
-                    "content": str(result_text),
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": str(result_text),
+                    }
+                )
 
             messages.append({"role": "user", "content": tool_results})
             log.info(

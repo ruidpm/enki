@@ -1,4 +1,5 @@
 """Tests for C-07: Background task exception swallowing — verify fallback paths are safe."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,9 +32,7 @@ def config() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_spawn_team_sage_relay_error_with_fallback_failure(
-    teams_store: TeamsStore, config: MagicMock
-) -> None:
+async def test_spawn_team_sage_relay_error_with_fallback_failure(teams_store: TeamsStore, config: MagicMock) -> None:
     """When agent.run_turn raises AND fallback notifier.send raises, no exception escapes."""
     notifier = AsyncMock()
     # First call (inside except block, fallback send) also fails
@@ -63,9 +62,7 @@ async def test_spawn_team_sage_relay_error_with_fallback_failure(
 
 
 @pytest.mark.asyncio
-async def test_spawn_team_no_agent_fallback_send_failure(
-    teams_store: TeamsStore, config: MagicMock
-) -> None:
+async def test_spawn_team_no_agent_fallback_send_failure(teams_store: TeamsStore, config: MagicMock) -> None:
     """When agent is None and fallback notifier.send raises, no exception escapes."""
     notifier = AsyncMock()
     notifier.send = AsyncMock(side_effect=RuntimeError("send failed"))

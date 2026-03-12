@@ -1,4 +1,5 @@
 """Tests for dynamic tool auto-discovery."""
+
 from __future__ import annotations
 
 import sys
@@ -10,7 +11,7 @@ import pytest
 from src.tools import registry
 from src.tools.loader import _SKIP_FILES, load_tools_from_dir
 
-VALID_TOOL_SRC = '''
+VALID_TOOL_SRC = """
 from typing import Any
 
 class GoodTool:
@@ -24,15 +25,15 @@ class GoodTool:
 
     async def execute(self, **kwargs: Any) -> str:
         return kwargs.get("msg", "")
-'''
+"""
 
-NO_TOOL_SRC = '''
+NO_TOOL_SRC = """
 # just a helper module, no Tool class
 def helper():
     return 42
-'''
+"""
 
-MISSING_EXECUTE_SRC = '''
+MISSING_EXECUTE_SRC = """
 from typing import Any
 
 class PartialTool:
@@ -40,7 +41,7 @@ class PartialTool:
     description = "incomplete"
     input_schema: dict[str, Any] = {}
     # no execute() method
-'''
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +71,7 @@ def _load(tool_dir: Path) -> list[str]:
     with patch("src.tools.loader.Path") as mock_path_cls:
         # Make the package name resolve to tmp_dir.name (e.g. "tmp_abc123")
         mock_path_cls.return_value.parent = tool_dir.parent
-        if hasattr(load_tools_from_dir, '__wrapped__'):
+        if hasattr(load_tools_from_dir, "__wrapped__"):
             return load_tools_from_dir.__wrapped__(tool_dir)
         return _load_direct(tool_dir)
 
@@ -161,7 +162,7 @@ def test_skip_files_are_not_loaded(tool_dir: Path) -> None:
 
 
 def test_multiple_tools_in_one_file(tool_dir: Path) -> None:
-    src = '''
+    src = """
 from typing import Any
 
 class ToolA:
@@ -177,7 +178,7 @@ class ToolB:
     input_schema: dict[str, Any] = {}
     async def execute(self, **kwargs: Any) -> str:
         return "b"
-'''
+"""
     (tool_dir / "multi.py").write_text(src)
     loaded = _load_direct(tool_dir)
     assert "tool_a" in loaded

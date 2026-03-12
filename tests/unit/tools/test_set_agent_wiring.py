@@ -3,6 +3,7 @@
 Tools with set_agent() must work without an agent wired (graceful fallback),
 but the fallback behavior should be clearly defined and tested.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,6 +18,7 @@ from src.tools.spawn_team import SpawnTeamTool
 # ---------------------------------------------------------------------------
 # SpawnTeamTool: without agent, raw result sent directly via notifier
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def teams_store(tmp_path: Path) -> TeamsStore:
@@ -33,7 +35,8 @@ def teams_store(tmp_path: Path) -> TeamsStore:
 
 @pytest.mark.asyncio
 async def test_spawn_team_no_agent_sends_raw_result(
-    teams_store: TeamsStore, tmp_path: Path,
+    teams_store: TeamsStore,
+    tmp_path: Path,
 ) -> None:
     """Without set_agent(), spawn_team sends raw result via notifier (no summarization)."""
     config = MagicMock()
@@ -67,7 +70,8 @@ async def test_spawn_team_no_agent_sends_raw_result(
 
 @pytest.mark.asyncio
 async def test_spawn_team_with_agent_routes_through_enki(
-    teams_store: TeamsStore, tmp_path: Path,
+    teams_store: TeamsStore,
+    tmp_path: Path,
 ) -> None:
     """With set_agent(), spawn_team routes through Enki for summarization."""
     config = MagicMock()
@@ -106,6 +110,7 @@ async def test_spawn_team_with_agent_routes_through_enki(
 # ---------------------------------------------------------------------------
 # RunClaudeCodeTool: without agent, sends raw output
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_claude_code_no_agent_sends_raw_output() -> None:

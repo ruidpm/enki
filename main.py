@@ -1,4 +1,5 @@
 """Enki — entry point."""
+
 from __future__ import annotations
 
 import contextlib
@@ -14,9 +15,11 @@ import structlog
 
 class _SpinnerClearProcessor:
     """Clear the braille spinner line before structlog writes, preventing visual bleed."""
+
     def __call__(self, logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         try:
             import src.interfaces.cli as _cli
+
             if _cli._spinner_active:
                 sys.stdout.write("\r\033[K")
                 sys.stdout.flush()
@@ -183,6 +186,7 @@ def _build_agent(notifier: object = None) -> BuildResult:
             import asyncio
 
             from src.interfaces.cli import _prompt_async
+
             asyncio.get_event_loop()
             try:
                 return await asyncio.wait_for(_prompt_async("Your answer: "), timeout=timeout_s)
@@ -224,8 +228,11 @@ def _build_agent(notifier: object = None) -> BuildResult:
     teams_store = TeamsStore(teams_db_path)
     seed_engineering_teams(teams_store)
     _spawn_team_tool = SpawnTeamTool(
-        store=teams_store, config=config, tool_registry=registry,
-        notifier=_notifier_instance, job_registry=job_registry,
+        store=teams_store,
+        config=config,
+        tool_registry=registry,
+        notifier=_notifier_instance,
+        job_registry=job_registry,
         cost_guard=cost_guard,
     )
     register(_spawn_team_tool)
@@ -285,15 +292,17 @@ def _build_agent(notifier: object = None) -> BuildResult:
     session_id = str(uuid.uuid4())
     audit_hook = AuditHook(audit, session_id=session_id)
 
-    chain = GuardrailChain([
-        AllowlistHook(registry),
-        ScopeCheckHook(),
-        loop_detector,
-        rate_limiter,
-        cost_guard,
-        ConfirmationGateHook(_notifier_instance),
-        audit_hook,
-    ])
+    chain = GuardrailChain(
+        [
+            AllowlistHook(registry),
+            ScopeCheckHook(),
+            loop_detector,
+            rate_limiter,
+            cost_guard,
+            ConfirmationGateHook(_notifier_instance),
+            audit_hook,
+        ]
+    )
 
     agent = Agent(
         config=config,
@@ -336,6 +345,7 @@ def cli() -> None:
 def chat() -> None:
     """Start interactive CLI session."""
     from src.interfaces.cli import run_cli
+
     result = _build_agent()
     run_cli(result.agent, compactor=result.compactor)
 
@@ -346,6 +356,7 @@ def telegram() -> None:
     from src.config import Settings
     from src.interfaces.telegram_bot import TelegramBot
     from src.scheduler import Scheduler, default_jobs
+
     config = Settings()
 
     bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id)
@@ -358,6 +369,7 @@ def telegram() -> None:
 
     # Seed default jobs on first run, then load all from store
     from src.schedule.store import ScheduleStore as _SS
+
     assert isinstance(schedule_store, _SS)
     if not schedule_store.list_all():
         for job in default_jobs():
@@ -368,6 +380,7 @@ def telegram() -> None:
 
     # Wire scheduler into manage_schedule tool
     from src.tools.manage_schedule import ManageScheduleTool as _MST
+
     assert isinstance(manage_schedule_tool, _MST)
     manage_schedule_tool.set_scheduler(scheduler)
 
@@ -376,6 +389,7 @@ def telegram() -> None:
     async def _heartbeat_writer() -> None:
         """Write current timestamp to data/last_seen every 60 s."""
         import asyncio
+
         while True:
             try:
                 _LAST_SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -407,12 +421,10 @@ def telegram() -> None:
                 if offline_since is not None:
                     duration_min = int((now - offline_since) / 60)
                     from datetime import datetime
+
                     lost_at = datetime.fromtimestamp(offline_since, tz=UTC).strftime("%H:%M UTC")
                     with contextlib.suppress(Exception):
-                        await bot.send(
-                            f"Internet restored. Was offline from {lost_at} "
-                            f"({duration_min} min ago)."
-                        )
+                        await bot.send(f"Internet restored. Was offline from {lost_at} ({duration_min} min ago).")
                     offline_since = None
             else:
                 if offline_since is None:
@@ -427,13 +439,16 @@ def telegram() -> None:
 
         from telegram import BotCommand, MenuButtonCommands
         from telegram.ext import Application as _App
+
         assert isinstance(_app, _App)
-        await _app.bot.set_my_commands([
-            BotCommand("start",      "Check Enki is alive"),
-            BotCommand("newsession", "Clear conversation history, start fresh"),
-            BotCommand("cost",       "Session token and cost usage"),
-            BotCommand("audit",      "Last 5 security events"),
-        ])
+        await _app.bot.set_my_commands(
+            [
+                BotCommand("start", "Check Enki is alive"),
+                BotCommand("newsession", "Clear conversation history, start fresh"),
+                BotCommand("cost", "Session token and cost usage"),
+                BotCommand("audit", "Last 5 security events"),
+            ]
+        )
         await _app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
         scheduler.start()
 
@@ -444,13 +459,9 @@ def telegram() -> None:
                 gap = int(time.time()) - last_ts
                 if gap > 120:
                     from datetime import datetime
-                    last_str = datetime.fromtimestamp(last_ts, tz=UTC).strftime(
-                        "%Y-%m-%d %H:%M UTC"
-                    )
-                    await bot.send(
-                        f"Enki restarted. Last seen: {last_str} "
-                        f"({gap // 60} min ago). Catching up."
-                    )
+
+                    last_str = datetime.fromtimestamp(last_ts, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
+                    await bot.send(f"Enki restarted. Last seen: {last_str} ({gap // 60} min ago). Catching up.")
         except Exception as exc:
             log.warning("startup_catchup_failed", error=str(exc))
 
@@ -466,6 +477,7 @@ def telegram() -> None:
 
     async def _on_shutdown(_app: object) -> None:
         import asyncio
+
         scheduler.stop()
         try:
             await asyncio.wait_for(

@@ -1,4 +1,5 @@
 """Tests for SavePipelineArtifactTool."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -60,9 +61,7 @@ async def test_save_artifact_invalid_stage(tool: SavePipelineArtifactTool) -> No
 
 
 @pytest.mark.asyncio
-async def test_save_artifact_overwrites_existing(
-    tool: SavePipelineArtifactTool, store: PipelineStore
-) -> None:
+async def test_save_artifact_overwrites_existing(tool: SavePipelineArtifactTool, store: PipelineStore) -> None:
     await tool.execute(
         pipeline_id="p1",
         stage="research",
@@ -87,14 +86,8 @@ async def test_save_artifact_missing_required_fields(tool: SavePipelineArtifactT
 
 
 @pytest.mark.asyncio
-async def test_save_multiple_stages(
-    tool: SavePipelineArtifactTool, store: PipelineStore
-) -> None:
-    await tool.execute(
-        pipeline_id="p1", stage="research", artifact_type="research_report", content="findings"
-    )
-    await tool.execute(
-        pipeline_id="p1", stage="scope", artifact_type="requirements", content="requirements doc"
-    )
+async def test_save_multiple_stages(tool: SavePipelineArtifactTool, store: PipelineStore) -> None:
+    await tool.execute(pipeline_id="p1", stage="research", artifact_type="research_report", content="findings")
+    await tool.execute(pipeline_id="p1", stage="scope", artifact_type="requirements", content="requirements doc")
     artifacts = store.list_artifacts("p1")
     assert len(artifacts) == 2

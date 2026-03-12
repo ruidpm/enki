@@ -1,4 +1,5 @@
 """Audit database — SQLite-backed, tiered storage."""
+
 from __future__ import annotations
 
 import asyncio
@@ -66,17 +67,12 @@ class AuditDB:
             conn.close()
 
     def _last_chain_hash(self, conn: sqlite3.Connection) -> str:
-        row = conn.execute(
-            "SELECT chain_hash FROM tier1 ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT chain_hash FROM tier1 ORDER BY id DESC LIMIT 1").fetchone()
         return row["chain_hash"] if row else ""
 
-    async def log_tier1(
-        self, event_type: Tier1Event, session_id: str, data: dict[str, Any]
-    ) -> None:
+    async def log_tier1(self, event_type: Tier1Event, session_id: str, data: dict[str, Any]) -> None:
         timestamp = datetime.now(UTC).isoformat()
-        full_data = {"event_type": event_type, "session_id": session_id,
-                     "timestamp": timestamp, **data}
+        full_data = {"event_type": event_type, "session_id": session_id, "timestamp": timestamp, **data}
         data_hash = compute_data_hash(full_data)
         async with self._tier1_lock:
             with self._conn() as conn:
@@ -86,13 +82,10 @@ class AuditDB:
                     """INSERT INTO tier1
                        (event_type, session_id, timestamp, data, data_hash, prev_chain_hash, chain_hash)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (event_type, session_id, timestamp, json.dumps(data, default=str),
-                     data_hash, prev_hash, chain_hash),
+                    (event_type, session_id, timestamp, json.dumps(data, default=str), data_hash, prev_hash, chain_hash),
                 )
 
-    async def log_tier2(
-        self, event_type: Tier2Event, session_id: str, data: dict[str, Any]
-    ) -> None:
+    async def log_tier2(self, event_type: Tier2Event, session_id: str, data: dict[str, Any]) -> None:
         timestamp = datetime.now(UTC).isoformat()
         with self._conn() as conn:
             conn.execute(
@@ -112,8 +105,7 @@ class AuditDB:
             await self.log_tier1(
                 Tier1Event.GUARDRAIL_BLOCK,
                 session_id,
-                {"tool": tool_name, "reason": block_reason,
-                 "params_hash": compute_data_hash(params)},
+                {"tool": tool_name, "reason": block_reason, "params_hash": compute_data_hash(params)},
             )
         else:
             await self.log_tier2(

@@ -1,4 +1,5 @@
 """Post-session memory compactor — distills conversation into durable user facts."""
+
 from __future__ import annotations
 
 import asyncio
@@ -103,9 +104,7 @@ class MemoryCompactor:
         if not turns:
             return []
 
-        transcript = "\n".join(
-            f"{t['role'].upper()}: {t['content']}" for t in turns
-        )
+        transcript = "\n".join(f"{t['role'].upper()}: {t['content']}" for t in turns)
 
         log.info("compacting_session", session_id=session_id, turn_count=len(turns))
 
@@ -133,13 +132,15 @@ class MemoryCompactor:
             merge_response = await self._client.messages.create(
                 model=self._model,
                 max_tokens=1024,
-                messages=[{
-                    "role": "user",
-                    "content": _MERGE_PROMPT.format(
-                        existing_facts=existing_facts,
-                        new_facts="\n".join(new_facts),
-                    ),
-                }],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _MERGE_PROMPT.format(
+                            existing_facts=existing_facts,
+                            new_facts="\n".join(new_facts),
+                        ),
+                    }
+                ],
             )
             first_merged = merge_response.content[0] if merge_response.content else None
             merged_raw = first_merged.text if isinstance(first_merged, TextBlock) else ""
@@ -189,10 +190,12 @@ class MemoryCompactor:
         response = await self._client.messages.create(
             model=self._model,
             max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": _CLEAN_PROMPT.format(existing_facts=existing_facts),
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": _CLEAN_PROMPT.format(existing_facts=existing_facts),
+                }
+            ],
         )
         first_clean = response.content[0] if response.content else None
         cleaned_raw = first_clean.text if isinstance(first_clean, TextBlock) else ""

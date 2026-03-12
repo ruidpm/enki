@@ -1,4 +1,5 @@
 """Tests for JobRegistry and JobStatusTool."""
+
 from __future__ import annotations
 
 import pytest
@@ -20,6 +21,7 @@ def tool(registry: JobRegistry) -> JobStatusTool:
 # ---------------------------------------------------------------------------
 # JobRegistry
 # ---------------------------------------------------------------------------
+
 
 def test_register_and_get(registry: JobRegistry) -> None:
     registry.start("job1", job_type="ccc", description="build auth")
@@ -104,6 +106,7 @@ def test_finish_unknown_job_is_noop(registry: JobRegistry) -> None:
 # JobStatusTool
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_status_no_jobs(tool: JobStatusTool) -> None:
     result = await tool.execute()
@@ -122,9 +125,7 @@ async def test_status_shows_running_jobs(tool: JobStatusTool, registry: JobRegis
 
 
 @pytest.mark.asyncio
-async def test_status_all_flag_includes_finished(
-    tool: JobStatusTool, registry: JobRegistry
-) -> None:
+async def test_status_all_flag_includes_finished(tool: JobStatusTool, registry: JobRegistry) -> None:
     registry.start("done01", job_type="ccc", description="build thing")
     registry.finish("done01", success=True)
 

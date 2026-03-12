@@ -1,4 +1,5 @@
 """Tests for the scheduler."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -32,11 +33,13 @@ def test_scheduler_instantiates(scheduler: Scheduler) -> None:
 
 
 def test_add_job_registers(scheduler: Scheduler) -> None:
-    scheduler.add_job(ScheduledJob(
-        job_id="morning_briefing",
-        cron="0 8 * * *",
-        prompt="Give me a morning briefing: tasks due today, calendar events.",
-    ))
+    scheduler.add_job(
+        ScheduledJob(
+            job_id="morning_briefing",
+            cron="0 8 * * *",
+            prompt="Give me a morning briefing: tasks due today, calendar events.",
+        )
+    )
     assert "morning_briefing" in scheduler.jobs
 
 
@@ -48,9 +51,7 @@ def test_add_duplicate_job_overwrites(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_job_calls_agent_and_notifier(
-    scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock
-) -> None:
+async def test_run_job_calls_agent_and_notifier(scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock) -> None:
     job = ScheduledJob(job_id="test", cron="0 8 * * *", prompt="daily briefing")
     await scheduler._run_job(job)
     mock_agent.run_turn.assert_awaited_once_with("daily briefing")
@@ -74,9 +75,7 @@ def test_disabled_job_not_added_to_apscheduler(scheduler: Scheduler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_job_error_does_not_raise(
-    scheduler: Scheduler, mock_agent: MagicMock
-) -> None:
+async def test_run_job_error_does_not_raise(scheduler: Scheduler, mock_agent: MagicMock) -> None:
     mock_agent.run_turn = AsyncMock(side_effect=RuntimeError("boom"))
     job = ScheduledJob(job_id="test", cron="0 8 * * *", prompt="x")
     await scheduler._run_job(job)  # should not raise

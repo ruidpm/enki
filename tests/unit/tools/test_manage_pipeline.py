@@ -1,4 +1,5 @@
 """Tests for ManagePipelineTool."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,10 +33,9 @@ def tool(pipeline_store: PipelineStore, workspace_store: WorkspaceStore) -> Mana
 # start
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_start_creates_pipeline(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_start_creates_pipeline(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     result = await tool.execute(action="start", workspace_id="ws1", task="add OAuth login")
     assert "pipeline" in result.lower() or "started" in result.lower() or "research" in result.lower()
 
@@ -62,6 +62,7 @@ async def test_start_missing_task_returns_error(tool: ManagePipelineTool) -> Non
 # list
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_empty(tool: ManagePipelineTool) -> None:
     result = await tool.execute(action="list")
@@ -69,9 +70,7 @@ async def test_list_empty(tool: ManagePipelineTool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_shows_active_pipelines(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_list_shows_active_pipelines(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="add auth")
     pipeline_store.create("p2", workspace_id="ws1", task="fix bug")
     pipeline_store.set_status("p2", PipelineStatus.COMPLETED)
@@ -86,10 +85,9 @@ async def test_list_shows_active_pipelines(
 # advance
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_advance_moves_to_next_stage(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_advance_moves_to_next_stage(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="t")
     pipeline_store.save_artifact("p1", PipelineStage.RESEARCH, "research_report", "findings")
 
@@ -102,9 +100,7 @@ async def test_advance_moves_to_next_stage(
 
 
 @pytest.mark.asyncio
-async def test_advance_blocked_without_artifact(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_advance_blocked_without_artifact(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="t")
     # No artifact saved for RESEARCH stage
 
@@ -124,9 +120,7 @@ async def test_advance_unknown_pipeline_returns_error(tool: ManagePipelineTool) 
 
 
 @pytest.mark.asyncio
-async def test_advance_at_final_stage_completes_pipeline(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_advance_at_final_stage_completes_pipeline(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="t")
     pipeline_store.advance_stage("p1", PipelineStage.PR)
     pipeline_store.save_artifact("p1", PipelineStage.PR, "pr_url", "https://github.com/u/r/pull/42")
@@ -143,10 +137,9 @@ async def test_advance_at_final_stage_completes_pipeline(
 # abort
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_abort_sets_status(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_abort_sets_status(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="t")
     result = await tool.execute(action="abort", pipeline_id="p1")
     assert "abort" in result.lower() or "cancelled" in result.lower()
@@ -166,10 +159,9 @@ async def test_abort_unknown_pipeline(tool: ManagePipelineTool) -> None:
 # status
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_status_shows_pipeline_details(
-    tool: ManagePipelineTool, pipeline_store: PipelineStore
-) -> None:
+async def test_status_shows_pipeline_details(tool: ManagePipelineTool, pipeline_store: PipelineStore) -> None:
     pipeline_store.create("p1", workspace_id="ws1", task="add auth")
     pipeline_store.save_artifact("p1", PipelineStage.RESEARCH, "research_report", "findings here")
 

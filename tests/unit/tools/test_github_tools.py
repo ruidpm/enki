@@ -1,4 +1,5 @@
 """Tests for GitHub tools — branch protection and CLI dispatch."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,8 +51,7 @@ async def test_git_push_blocks_master() -> None:
 @pytest.mark.asyncio
 async def test_git_push_allows_feature_branch() -> None:
     tool = GitPushBranchTool()
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "Branch pushed.")):
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "Branch pushed.")):
         result = await tool.execute(branch="feature/new-tool")
     assert "BLOCKED" not in result
 
@@ -73,8 +73,9 @@ async def test_create_pr_blocks_from_master() -> None:
 @pytest.mark.asyncio
 async def test_create_pr_allows_feature_branch() -> None:
     tool = CreatePRTool()
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "https://github.com/user/repo/pull/1")):
+    with patch(
+        "src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "https://github.com/user/repo/pull/1")
+    ):
         result = await tool.execute(title="Add feature", branch="feature/x")
     assert "BLOCKED" not in result
 
@@ -82,8 +83,7 @@ async def test_create_pr_allows_feature_branch() -> None:
 @pytest.mark.asyncio
 async def test_git_status_returns_output() -> None:
     tool = GitStatusTool()
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "M src/agent.py")):
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "M src/agent.py")):
         result = await tool.execute()
     assert "src/agent.py" in result
 
@@ -91,8 +91,7 @@ async def test_git_status_returns_output() -> None:
 @pytest.mark.asyncio
 async def test_git_status_clean() -> None:
     tool = GitStatusTool()
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "")):
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "")):
         result = await tool.execute()
     assert "clean" in result.lower()
 
@@ -101,12 +100,11 @@ async def test_git_status_clean() -> None:
 # Trust enforcement — workspace-aware tools
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_commit_blocked_for_read_only_workspace(workspace_store: WorkspaceStore) -> None:
     tool = GitCommitTool(workspace_store=workspace_store)
-    result = await tool.execute(
-        workspace_id="read_only_ws", message="test commit", files=["."]
-    )
+    result = await tool.execute(workspace_id="read_only_ws", message="test commit", files=["."])
     assert "BLOCKED" in result
     assert "trust" in result.lower()
 
@@ -114,11 +112,8 @@ async def test_commit_blocked_for_read_only_workspace(workspace_store: Workspace
 @pytest.mark.asyncio
 async def test_commit_allowed_for_propose_workspace(workspace_store: WorkspaceStore) -> None:
     tool = GitCommitTool(workspace_store=workspace_store)
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "[main abc1234] test commit")):
-        result = await tool.execute(
-            workspace_id="propose_ws", message="test commit", files=["."]
-        )
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "[main abc1234] test commit")):
+        result = await tool.execute(workspace_id="propose_ws", message="test commit", files=["."])
     assert "BLOCKED" not in result
 
 
@@ -142,8 +137,10 @@ async def test_push_blocked_for_propose_workspace(workspace_store: WorkspaceStor
 @pytest.mark.asyncio
 async def test_push_allowed_for_auto_push_workspace(workspace_store: WorkspaceStore) -> None:
     tool = GitPushBranchTool(workspace_store=workspace_store)
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "Branch 'feat/new' set up to track...")):
+    with patch(
+        "src.tools.github_tools.asyncio.create_subprocess_exec",
+        return_value=_mock_proc(0, "Branch 'feat/new' set up to track..."),
+    ):
         result = await tool.execute(workspace_id="auto_push_ws", branch="feat/new")
     assert "BLOCKED" not in result
 
@@ -151,9 +148,7 @@ async def test_push_allowed_for_auto_push_workspace(workspace_store: WorkspaceSt
 @pytest.mark.asyncio
 async def test_create_pr_blocked_for_read_only_workspace(workspace_store: WorkspaceStore) -> None:
     tool = CreatePRTool(workspace_store=workspace_store)
-    result = await tool.execute(
-        workspace_id="read_only_ws", title="My PR", branch="feat/x"
-    )
+    result = await tool.execute(workspace_id="read_only_ws", title="My PR", branch="feat/x")
     assert "BLOCKED" in result
     assert "trust" in result.lower()
 
@@ -162,8 +157,7 @@ async def test_create_pr_blocked_for_read_only_workspace(workspace_store: Worksp
 async def test_commit_no_workspace_id_uses_cwd(workspace_store: WorkspaceStore) -> None:
     """No workspace_id → operates on assistant's own repo, no trust check."""
     tool = GitCommitTool(workspace_store=workspace_store)
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "[main abc] commit")):
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "[main abc] commit")):
         result = await tool.execute(message="local commit", files=["."])
     assert "BLOCKED" not in result
 
@@ -171,9 +165,7 @@ async def test_commit_no_workspace_id_uses_cwd(workspace_store: WorkspaceStore) 
 @pytest.mark.asyncio
 async def test_commit_unknown_workspace_returns_error(workspace_store: WorkspaceStore) -> None:
     tool = GitCommitTool(workspace_store=workspace_store)
-    result = await tool.execute(
-        workspace_id="ghost_ws", message="test", files=["."]
-    )
+    result = await tool.execute(workspace_id="ghost_ws", message="test", files=["."])
     assert "error" in result.lower() or "not found" in result.lower()
 
 
@@ -181,13 +173,12 @@ async def test_commit_unknown_workspace_returns_error(workspace_store: Workspace
 # H-14: _check_trust must fail when store is None but workspace_id is given
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_check_trust_fails_when_store_is_none_but_workspace_id_given() -> None:
     """When workspace_store is None but workspace_id is provided, must return error."""
     tool = GitCommitTool(workspace_store=None)
-    result = await tool.execute(
-        workspace_id="some_ws", message="test", files=["."]
-    )
+    result = await tool.execute(workspace_id="some_ws", message="test", files=["."])
     assert "error" in result.lower()
 
 
@@ -195,7 +186,6 @@ async def test_check_trust_fails_when_store_is_none_but_workspace_id_given() -> 
 async def test_check_trust_ok_when_store_none_and_no_workspace_id() -> None:
     """No workspace_id + no store = assistant repo, should work fine."""
     tool = GitStatusTool(workspace_store=None)
-    with patch("src.tools.github_tools.asyncio.create_subprocess_exec",
-               return_value=_mock_proc(0, "M file.py")):
+    with patch("src.tools.github_tools.asyncio.create_subprocess_exec", return_value=_mock_proc(0, "M file.py")):
         result = await tool.execute()
     assert "error" not in result.lower() or "file.py" in result

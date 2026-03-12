@@ -7,6 +7,7 @@ project given the right context in the task prompt.
 Language-specific rules are injected dynamically via workspace CLAUDE.md
 (see src/workspaces/context.py), not hardcoded here.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

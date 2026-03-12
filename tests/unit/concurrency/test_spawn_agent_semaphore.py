@@ -1,4 +1,5 @@
 """Tests for C-10: Spawn agent must use asyncio.Semaphore to prevent race condition."""
+
 from __future__ import annotations
 
 import asyncio
@@ -61,10 +62,7 @@ async def test_concurrent_spawns_respect_limit(config: MagicMock, registry: dict
         MockRunner.return_value = runner
 
         # Launch 10 concurrent spawns — only 5 should run at once
-        tasks = [
-            tool.execute(task=f"task-{i}", tools=["web_search"])
-            for i in range(10)
-        ]
+        tasks = [tool.execute(task=f"task-{i}", tools=["web_search"]) for i in range(10)]
         await asyncio.gather(*tasks)
 
     # All tasks should complete (some may be blocked then succeed)

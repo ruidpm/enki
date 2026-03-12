@@ -1,4 +1,5 @@
 """Task management tool — CRUD via sqlite3 CLI."""
+
 from __future__ import annotations
 
 import asyncio

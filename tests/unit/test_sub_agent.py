@@ -1,4 +1,5 @@
 """Tests for SubAgentRunner (M-22, C-04)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -21,10 +22,7 @@ def test_max_steps_returns_incomplete_marker() -> None:
 
     # Verify the marker string format is consistent
     expected_prefix = "[INCOMPLETE: max steps reached]"
-    result_text = (
-        "[INCOMPLETE: max steps reached] Sub-agent 'test-agent' "
-        "hit the 0-step limit. Results may be partial."
-    )
+    result_text = "[INCOMPLETE: max steps reached] Sub-agent 'test-agent' hit the 0-step limit. Results may be partial."
     assert expected_prefix in result_text
 
 

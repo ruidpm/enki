@@ -1,4 +1,5 @@
 """Email read tool — IMAP read-only. smtplib is intentionally absent from this codebase."""
+
 from __future__ import annotations
 
 import asyncio
@@ -50,9 +51,7 @@ class EmailReadTool:
 
         # Run blocking IMAP in thread pool
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, self._fetch_emails, count, folder, unread_only
-        )
+        return await loop.run_in_executor(None, self._fetch_emails, count, folder, unread_only)
 
     def _fetch_emails(self, count: int, folder: str, unread_only: bool) -> str:
         try:

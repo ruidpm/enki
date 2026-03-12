@@ -1,4 +1,5 @@
 """Guardrail hook chain — deterministic, fail-fast."""
+
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -11,9 +12,7 @@ log = structlog.get_logger()
 class GuardrailHook(Protocol):
     name: str
 
-    async def check(
-        self, tool_name: str, params: dict[str, Any]
-    ) -> tuple[bool, str | None]:
+    async def check(self, tool_name: str, params: dict[str, Any]) -> tuple[bool, str | None]:
         """Returns (allow, reason). allow=False means BLOCK."""
         ...
 
@@ -24,9 +23,7 @@ class GuardrailChain:
     def __init__(self, hooks: list[GuardrailHook]) -> None:
         self._hooks = hooks
 
-    async def run(
-        self, tool_name: str, params: dict[str, Any]
-    ) -> tuple[bool, str | None]:
+    async def run(self, tool_name: str, params: dict[str, Any]) -> tuple[bool, str | None]:
         """Run all hooks sequentially. Returns (allow, reason)."""
         for hook in self._hooks:
             allow, reason = await hook.check(tool_name, params)

@@ -1,4 +1,5 @@
 """Tests for agent tool dispatch and guardrail integration."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -30,9 +31,7 @@ def chain(fake_registry: dict[str, Any]) -> GuardrailChain:
 
 
 @pytest.mark.asyncio
-async def test_allowed_tool_executes(
-    fake_registry: dict[str, Any], chain: GuardrailChain
-) -> None:
+async def test_allowed_tool_executes(fake_registry: dict[str, Any], chain: GuardrailChain) -> None:
     allow, reason = await chain.run("fake_tool", {})
     assert allow is True
     result = await fake_registry["fake_tool"].execute()

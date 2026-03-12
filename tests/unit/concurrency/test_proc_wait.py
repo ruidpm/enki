@@ -1,4 +1,5 @@
 """Tests for C-08: Missing await proc.wait() after proc.kill() in claude_code.py."""
+
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +36,7 @@ def tool(tmp_path: Path, notifier: MagicMock) -> RunClaudeCodeTool:
 
 
 @pytest.mark.asyncio
-async def test_proc_wait_called_after_kill_on_timeout(
-    tool: RunClaudeCodeTool, notifier: MagicMock
-) -> None:
+async def test_proc_wait_called_after_kill_on_timeout(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     """After proc.kill(), proc.wait() must be awaited to prevent zombie processes."""
     proc = _make_timeout_proc()
 
@@ -88,10 +87,13 @@ async def test_proc_wait_called_after_kill_in_pipeline_implement(
         tool_registry={},
     )
 
-    with patch(
-        "src.tools.run_pipeline.asyncio.create_subprocess_exec",
-        AsyncMock(return_value=proc),
-    ), pytest.raises(RuntimeError, match="timed out"):
+    with (
+        patch(
+            "src.tools.run_pipeline.asyncio.create_subprocess_exec",
+            AsyncMock(return_value=proc),
+        ),
+        pytest.raises(RuntimeError, match="timed out"),
+    ):
         await tool._run_implement("p1", "task", str(tmp_path), "python", {})
 
     proc.kill.assert_called_once()

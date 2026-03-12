@@ -1,4 +1,5 @@
 """Tests for TeamsStore — SQLite-backed persistent team registry."""
+
 from __future__ import annotations
 
 from pathlib import Path

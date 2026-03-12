@@ -1,4 +1,5 @@
 """Tests for RemoveToolTool — soft-disables a proposed tool."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,10 +37,9 @@ def tool(tools_dir: Path, disabled_dir: Path, registry: dict) -> RemoveToolTool:
 # Happy path
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_remove_moves_file_to_disabled(
-    tool: RemoveToolTool, tools_dir: Path, disabled_dir: Path, registry: dict
-) -> None:
+async def test_remove_moves_file_to_disabled(tool: RemoveToolTool, tools_dir: Path, disabled_dir: Path, registry: dict) -> None:
     src = tools_dir / "my_tool.py"
     src.write_text("# my tool code")
     registry["my_tool"] = object()
@@ -54,9 +54,7 @@ async def test_remove_moves_file_to_disabled(
 
 
 @pytest.mark.asyncio
-async def test_remove_unregisters_from_registry(
-    tool: RemoveToolTool, tools_dir: Path, registry: dict
-) -> None:
+async def test_remove_unregisters_from_registry(tool: RemoveToolTool, tools_dir: Path, registry: dict) -> None:
     (tools_dir / "calc.py").write_text("# calc")
     registry["calc"] = object()
 
@@ -66,9 +64,7 @@ async def test_remove_unregisters_from_registry(
 
 
 @pytest.mark.asyncio
-async def test_disabled_dir_created_if_missing(
-    tools_dir: Path, registry: dict, tmp_path: Path
-) -> None:
+async def test_disabled_dir_created_if_missing(tools_dir: Path, registry: dict, tmp_path: Path) -> None:
     disabled_dir = tmp_path / "tools_disabled"
     assert not disabled_dir.exists()
 
@@ -86,6 +82,7 @@ async def test_disabled_dir_created_if_missing(
 # Error cases
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_blocks_immutable_core_tool(tool: RemoveToolTool, registry: dict) -> None:
     registry["propose_tool"] = object()
@@ -101,9 +98,7 @@ async def test_error_if_not_registered(tool: RemoveToolTool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_error_if_no_file_found(
-    tool: RemoveToolTool, registry: dict
-) -> None:
+async def test_error_if_no_file_found(tool: RemoveToolTool, registry: dict) -> None:
     # Registered but no .py file (e.g. a built-in registered via DI)
     registry["built_in"] = object()
     result = await tool.execute(tool_name="built_in")

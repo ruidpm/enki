@@ -1,4 +1,5 @@
 """Tests for audit integration in agent — H-02, L-14."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -26,6 +27,7 @@ class FakeTool:
 
 class BlockedFakeTool:
     """Not registered — will be blocked by allowlist."""
+
     name = "blocked_tool"
     description = "blocked"
     input_schema: dict[str, Any] = {"type": "object", "properties": {}}
@@ -74,12 +76,14 @@ def _make_agent(
     loop_detector = LoopDetectorHook(threshold=3)
     rate_limiter = RateLimiterHook(max_per_turn=10)
 
-    chain = GuardrailChain([
-        AllowlistHook(reg),
-        loop_detector,
-        rate_limiter,
-        cost_guard,
-    ])
+    chain = GuardrailChain(
+        [
+            AllowlistHook(reg),
+            loop_detector,
+            rate_limiter,
+            cost_guard,
+        ]
+    )
 
     agent = Agent(
         config=config,
@@ -130,9 +134,7 @@ async def test_audit_log_tool_call_called_for_allowed(tmp_path: Any) -> None:
     response_text.content = [text_block]
     response_text.usage = MagicMock(input_tokens=200, output_tokens=100)
 
-    agent._client.messages.create = AsyncMock(
-        side_effect=[response_with_tool, response_text]
-    )
+    agent._client.messages.create = AsyncMock(side_effect=[response_with_tool, response_text])
 
     await agent.run_turn("test")
 
@@ -180,9 +182,7 @@ async def test_audit_log_tool_call_called_for_blocked(tmp_path: Any) -> None:
     response_text.content = [text_block]
     response_text.usage = MagicMock(input_tokens=200, output_tokens=100)
 
-    agent._client.messages.create = AsyncMock(
-        side_effect=[response_with_tool, response_text]
-    )
+    agent._client.messages.create = AsyncMock(side_effect=[response_with_tool, response_text])
 
     await agent.run_turn("test")
 
@@ -228,17 +228,12 @@ async def test_tier2_tool_log_includes_result_truncated(tmp_path: Any) -> None:
     response_text.content = [text_block]
     response_text.usage = MagicMock(input_tokens=200, output_tokens=100)
 
-    agent._client.messages.create = AsyncMock(
-        side_effect=[response_with_tool, response_text]
-    )
+    agent._client.messages.create = AsyncMock(side_effect=[response_with_tool, response_text])
 
     await agent.run_turn("test")
 
     # Find the TOOL_CALLED tier2 entry
-    tool_result_logs = [
-        c for c in tier2_calls
-        if c["data"].get("tool") == "fake_tool" and "result_preview" in c["data"]
-    ]
+    tool_result_logs = [c for c in tier2_calls if c["data"].get("tool") == "fake_tool" and "result_preview" in c["data"]]
     assert len(tool_result_logs) >= 1
     data = tool_result_logs[0]["data"]
     assert data["result_preview"] == "tool result here"

@@ -1,4 +1,5 @@
 """Pipeline store — SQLite-backed persistence for structured engineering pipelines."""
+
 from __future__ import annotations
 
 import asyncio
@@ -87,21 +88,15 @@ class PipelineStore:
         self._conn.commit()
 
     def get(self, pipeline_id: str) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            "SELECT * FROM pipelines WHERE pipeline_id = ?", (pipeline_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM pipelines WHERE pipeline_id = ?", (pipeline_id,)).fetchone()
         return dict(row) if row else None
 
     def list_active(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM pipelines WHERE status = 'active' ORDER BY created_at DESC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM pipelines WHERE status = 'active' ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
 
     def list_all(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM pipelines ORDER BY created_at DESC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM pipelines ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
 
     def advance_stage(self, pipeline_id: str, stage: str) -> None:
@@ -208,9 +203,7 @@ class PipelineStore:
         async with self._lock:
             self.save_artifact(pipeline_id, stage, artifact_type, content)
 
-    async def get_artifact_async(
-        self, pipeline_id: str, stage: str
-    ) -> dict[str, Any] | None:
+    async def get_artifact_async(self, pipeline_id: str, stage: str) -> dict[str, Any] | None:
         async with self._lock:
             return self.get_artifact(pipeline_id, stage)
 

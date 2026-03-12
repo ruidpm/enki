@@ -1,4 +1,5 @@
 """Scope check guardrail — validates URLs and file paths."""
+
 from __future__ import annotations
 
 import re
@@ -6,16 +7,18 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 # Only these API hosts are reachable
-ALLOWED_HOSTS: frozenset[str] = frozenset({
-    "api.anthropic.com",
-    "api.search.brave.com",
-    "api.telegram.org",
-    "api.github.com",
-    "github.com",
-    "www.github.com",
-    "www.googleapis.com",
-    "oauth2.googleapis.com",
-})
+ALLOWED_HOSTS: frozenset[str] = frozenset(
+    {
+        "api.anthropic.com",
+        "api.search.brave.com",
+        "api.telegram.org",
+        "api.github.com",
+        "github.com",
+        "www.github.com",
+        "www.googleapis.com",
+        "oauth2.googleapis.com",
+    }
+)
 
 _TRAVERSAL_RE = re.compile(r"\.\.[/\\]")
 
@@ -23,9 +26,7 @@ _TRAVERSAL_RE = re.compile(r"\.\.[/\\]")
 class ScopeCheckHook:
     name = "scope_check"
 
-    async def check(
-        self, tool_name: str, params: dict[str, Any]
-    ) -> tuple[bool, str | None]:
+    async def check(self, tool_name: str, params: dict[str, Any]) -> tuple[bool, str | None]:
         for key, value in params.items():
             if not isinstance(value, str):
                 continue

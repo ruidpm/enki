@@ -7,6 +7,7 @@ code_scanner.py grants subprocess a path-based exception for this file only.
 Runs as a background asyncio task — execute() returns immediately with a job ID.
 The notifier receives the result when the job completes (no blocking of the main agent).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,13 +20,15 @@ import structlog
 
 # Files/dirs Claude Code must never modify when working on THIS assistant's repo.
 # Any violation is flagged loudly in the completion notification.
-PROTECTED_PATHS: frozenset[str] = frozenset({
-    "src/guardrails/",
-    "src/audit/",
-    "src/agent.py",
-    "main.py",
-    "src/config.py",
-})
+PROTECTED_PATHS: frozenset[str] = frozenset(
+    {
+        "src/guardrails/",
+        "src/audit/",
+        "src/agent.py",
+        "main.py",
+        "src/config.py",
+    }
+)
 
 log = structlog.get_logger()
 
@@ -34,7 +37,7 @@ log = structlog.get_logger()
 _CLAUDE_BIN = "claude"
 _CLAUDE_FLAGS = ["--dangerously-skip-permissions", "-p"]
 
-_TIMEOUT_SECONDS = 600   # 10-minute hard cap per job
+_TIMEOUT_SECONDS = 600  # 10-minute hard cap per job
 _COOLDOWN_SECONDS = 300  # 5-minute minimum between spawns
 
 # Language-specific rules injected into temp CLAUDE.md before CCC runs
@@ -50,7 +53,7 @@ _LANG_RULES: dict[str, str] = {
     ),
     "typescript": (
         "## This Project: TypeScript\n"
-        "- Strict TypeScript (`\"strict\": true`). No `any` unless justified with a comment.\n"
+        '- Strict TypeScript (`"strict": true`). No `any` unless justified with a comment.\n'
         "- ESLint + Prettier — follow existing config, don't change tooling.\n"
         "- Vitest or Jest — check which is set up before writing tests.\n"
         "- Async/await over callbacks. No `console.log` in committed code.\n"
@@ -61,7 +64,7 @@ _LANG_RULES: dict[str, str] = {
         "## This Project: Go\n"
         "- `gofmt` and `go vet` must pass.\n"
         "- Table-driven tests with `go test ./...`.\n"
-        "- Return errors, don't panic. Wrap with `fmt.Errorf(\"context: %w\", err)`.\n"
+        '- Return errors, don\'t panic. Wrap with `fmt.Errorf("context: %w", err)`.\n'
         "- Interfaces defined at point of use (consumer side).\n"
         "- TDD: write failing tests first, implement to pass, then refactor.\n"
     ),
@@ -175,6 +178,7 @@ class RunClaudeCodeTool:
             if self._workspace_store is None:
                 return "[ERROR] No workspace store configured."
             from src.workspaces.store import WorkspaceStore
+
             assert isinstance(self._workspace_store, WorkspaceStore)
             ws = self._workspace_store.get(workspace_id)
             if ws is None:
@@ -214,13 +218,15 @@ class RunClaudeCodeTool:
 
         if self._job_registry is not None:
             from src.jobs import JobRegistry
+
             assert isinstance(self._job_registry, JobRegistry)
             target_desc = f"workspace '{workspace_id}'" if workspace_id else "assistant repo"
             self._job_registry.start(job_id, job_type="ccc", description=f"{task[:60]} ({target_desc})")
 
         asyncio.create_task(
             self._run_background(
-                job_id, guarded_task,
+                job_id,
+                guarded_task,
                 workspace_path=workspace_path,
                 language=language,
             )
@@ -269,18 +275,14 @@ class RunClaudeCodeTool:
             return
 
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_TIMEOUT_SECONDS
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT_SECONDS)
         except TimeoutError:
             proc.kill()
             await proc.wait()
             log.error("claude_code_timeout", job_id=job_id)
             if claude_md_path and claude_md_path.exists():
                 claude_md_path.unlink()
-            await self._notifier.send(
-                f"[Job {job_id}] TIMEOUT — exceeded {_TIMEOUT_SECONDS // 60} minutes. Process killed."
-            )
+            await self._notifier.send(f"[Job {job_id}] TIMEOUT — exceeded {_TIMEOUT_SECONDS // 60} minutes. Process killed.")
             return
         finally:
             # Always clean up temp CLAUDE.md
@@ -295,6 +297,7 @@ class RunClaudeCodeTool:
             log.error("claude_code_error", job_id=job_id, returncode=proc.returncode)
             if self._job_registry is not None:
                 from src.jobs import JobRegistry
+
                 assert isinstance(self._job_registry, JobRegistry)
                 self._job_registry.finish(job_id, success=False, error=f"exit {proc.returncode}")
             await self._notifier.send(f"[Job {job_id}] ERROR (exit {proc.returncode}):\n{detail}")
@@ -307,7 +310,9 @@ class RunClaudeCodeTool:
         diff_msg = ""
         try:
             diff_proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "HEAD",
+                "git",
+                "diff",
+                "HEAD",
                 cwd=run_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
@@ -316,16 +321,10 @@ class RunClaudeCodeTool:
             diff_text = diff_out.decode(errors="replace").strip()
 
             if diff_text:
-                changed_files = [
-                    line[6:] for line in diff_text.splitlines()
-                    if line.startswith("+++ b/")
-                ]
+                changed_files = [line[6:] for line in diff_text.splitlines() if line.startswith("+++ b/")]
                 # Only check protected paths for the assistant's own repo
                 if workspace_path is None:
-                    violations = [
-                        f for f in changed_files
-                        if any(f.startswith(p) for p in PROTECTED_PATHS)
-                    ]
+                    violations = [f for f in changed_files if any(f.startswith(p) for p in PROTECTED_PATHS)]
                     if violations:
                         log.error("claude_code_protected_path_violation", job_id=job_id, files=violations)
                         diff_msg = (
@@ -342,6 +341,7 @@ class RunClaudeCodeTool:
 
         if self._job_registry is not None:
             from src.jobs import JobRegistry
+
             assert isinstance(self._job_registry, JobRegistry)
             self._job_registry.finish(job_id, success=True)
 
@@ -352,17 +352,20 @@ class RunClaudeCodeTool:
         """Create a secret GitHub gist via gh CLI. Returns URL or None on failure."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "gh", "gist", "create", "--secret",
-                "--desc", description,
-                "--filename", "output.md",
+                "gh",
+                "gist",
+                "create",
+                "--secret",
+                "--desc",
+                description,
+                "--filename",
+                "output.md",
                 "-",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(input=content.encode()), timeout=30
-            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(input=content.encode()), timeout=30)
             if proc.returncode == 0:
                 return stdout.decode().strip()
         except Exception as exc:
@@ -388,12 +391,8 @@ class RunClaudeCodeTool:
                 summary = full_output[:400]
 
             if gist_url:
-                await self._notifier.send(
-                    f"[Job {job_id}] Done:\n{summary}\n\nFull report: {gist_url}"
-                )
+                await self._notifier.send(f"[Job {job_id}] Done:\n{summary}\n\nFull report: {gist_url}")
             else:
-                await self._notifier.send(
-                    f"[Job {job_id}] Done:\n{summary}\n\n(full output too long; gist creation failed)"
-                )
+                await self._notifier.send(f"[Job {job_id}] Done:\n{summary}\n\n(full output too long; gist creation failed)")
         except Exception as exc:
             log.error("claude_code_send_output_failed", job_id=job_id, error=str(exc))

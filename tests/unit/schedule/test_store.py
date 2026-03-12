@@ -1,4 +1,5 @@
 """Tests for ScheduleStore — SQLite-backed persistent cron job registry."""
+
 from __future__ import annotations
 
 from pathlib import Path

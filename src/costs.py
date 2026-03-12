@@ -1,4 +1,5 @@
 """Shared model cost rates — single source of truth for all cost calculations."""
+
 from __future__ import annotations
 
 # Cost per million tokens (input, output) in USD — approximate

@@ -1,4 +1,5 @@
 """Tests for structlog context binding — H-13."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -71,8 +72,10 @@ async def test_session_id_bound_during_turn(tmp_path: Any) -> None:
 
     agent._client.messages.create = AsyncMock(return_value=response)
 
-    with patch("src.agent.structlog.contextvars.bind_contextvars") as mock_bind, \
-         patch("src.agent.structlog.contextvars.unbind_contextvars") as mock_unbind:
+    with (
+        patch("src.agent.structlog.contextvars.bind_contextvars") as mock_bind,
+        patch("src.agent.structlog.contextvars.unbind_contextvars") as mock_unbind,
+    ):
         await agent.run_turn("hi")
 
         mock_bind.assert_called_once_with(session_id=agent.session_id)

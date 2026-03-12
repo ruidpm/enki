@@ -1,4 +1,5 @@
 """Tests for scheduler error handling — M-17."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,9 +29,7 @@ def scheduler(mock_agent: MagicMock, mock_notifier: MagicMock) -> Scheduler:
 
 
 @pytest.mark.asyncio
-async def test_run_job_error_is_logged(
-    scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock
-) -> None:
+async def test_run_job_error_is_logged(scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock) -> None:
     """When _run_job fails, the error must be logged, not silently swallowed."""
     mock_agent.run_turn = AsyncMock(side_effect=RuntimeError("agent exploded"))
     job = ScheduledJob(job_id="test_job", cron="0 8 * * *", prompt="hello")
@@ -43,9 +42,7 @@ async def test_run_job_error_is_logged(
 
 
 @pytest.mark.asyncio
-async def test_run_job_notifier_failure_is_logged(
-    scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock
-) -> None:
+async def test_run_job_notifier_failure_is_logged(scheduler: Scheduler, mock_agent: MagicMock, mock_notifier: MagicMock) -> None:
     """When fallback notifier.send also fails, it must be logged, not suppressed."""
     mock_agent.run_turn = AsyncMock(side_effect=RuntimeError("agent down"))
     mock_notifier.send = AsyncMock(side_effect=RuntimeError("notifier down"))

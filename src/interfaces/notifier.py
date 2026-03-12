@@ -3,6 +3,7 @@
 Every component that needs to send messages to the user or request confirmation
 should import from here. Do NOT define ad-hoc Notifier protocols elsewhere.
 """
+
 from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable

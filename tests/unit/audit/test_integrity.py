@@ -1,4 +1,5 @@
 """Tests for hash chain integrity."""
+
 from __future__ import annotations
 
 from src.audit.integrity import compute_chain_hash, compute_data_hash, verify_chain
@@ -14,20 +15,21 @@ def make_records(n: int) -> list[dict]:  # type: ignore[type-arg]
         timestamp = f"2026-01-0{i + 1}T00:00:00"
         data: dict = {"extra": f"info{i}"}  # type: ignore[type-arg]
         # full_data mirrors what db.py hashes
-        full_data = {"event_type": event_type, "session_id": session_id,
-                     "timestamp": timestamp, **data}
+        full_data = {"event_type": event_type, "session_id": session_id, "timestamp": timestamp, **data}
         data_hash = compute_data_hash(full_data)
         chain_hash = compute_chain_hash(prev_hash, data_hash)
-        records.append({
-            "id": i + 1,
-            "event_type": event_type,
-            "session_id": session_id,
-            "timestamp": timestamp,
-            "data": data,
-            "data_hash": data_hash,
-            "prev_chain_hash": prev_hash,
-            "chain_hash": chain_hash,
-        })
+        records.append(
+            {
+                "id": i + 1,
+                "event_type": event_type,
+                "session_id": session_id,
+                "timestamp": timestamp,
+                "data": data,
+                "data_hash": data_hash,
+                "prev_chain_hash": prev_hash,
+                "chain_hash": chain_hash,
+            }
+        )
         prev_hash = chain_hash
     return records
 

@@ -1,4 +1,5 @@
 """Tests for AuditHook — record() called after guardrail chain decision."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -21,9 +22,7 @@ def hook(mock_writer: AsyncMock) -> AuditHook:
 
 
 @pytest.mark.asyncio
-async def test_record_called_for_allowed_tool(
-    hook: AuditHook, mock_writer: AsyncMock
-) -> None:
+async def test_record_called_for_allowed_tool(hook: AuditHook, mock_writer: AsyncMock) -> None:
     """record() must log allowed tool calls with name and params."""
     params = {"query": "test search"}
     await hook.record("web_search", params, allowed=True, reason=None)
@@ -38,14 +37,10 @@ async def test_record_called_for_allowed_tool(
 
 
 @pytest.mark.asyncio
-async def test_record_called_for_blocked_tool(
-    hook: AuditHook, mock_writer: AsyncMock
-) -> None:
+async def test_record_called_for_blocked_tool(hook: AuditHook, mock_writer: AsyncMock) -> None:
     """record() must log blocked tool calls with name, params, and reason."""
     params = {"action": "delete"}
-    await hook.record(
-        "evil_tool", params, allowed=False, reason="[allowlist] not registered"
-    )
+    await hook.record("evil_tool", params, allowed=False, reason="[allowlist] not registered")
 
     mock_writer.log_tool_call.assert_awaited_once_with(
         tool_name="evil_tool",

@@ -1,4 +1,5 @@
 """Tests for RunClaudeCodeTool — background job design."""
+
 from __future__ import annotations
 
 import asyncio
@@ -44,6 +45,7 @@ def tool(tmp_path: Path, notifier: MagicMock) -> RunClaudeCodeTool:
 # Confirmation gate
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_cancelled_when_user_denies(tmp_path: Path) -> None:
     n = MagicMock()
@@ -79,6 +81,7 @@ async def test_execute_returns_immediately_with_job_id(tool: RunClaudeCodeTool) 
 # ---------------------------------------------------------------------------
 # Background job: _run_background success path
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_background_sends_result_on_success(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
@@ -121,6 +124,7 @@ async def test_background_uses_project_dir(tool: RunClaudeCodeTool, tmp_path: Pa
 # ---------------------------------------------------------------------------
 # Background job: error handling
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_background_notifies_on_nonzero_exit(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
@@ -175,8 +179,8 @@ async def test_background_flags_protected_path_violation(tool: RunClaudeCodeTool
     # Simulate CCC touching src/guardrails/scope_check.py
     diff_proc = _make_proc(
         stdout=b"diff --git a/src/guardrails/scope_check.py b/src/guardrails/scope_check.py\n"
-               b"+++ b/src/guardrails/scope_check.py\n"
-               b'+    "www.evil.com",\n'
+        b"+++ b/src/guardrails/scope_check.py\n"
+        b'+    "www.evil.com",\n'
     )
     with patch("src.tools.claude_code.asyncio.create_subprocess_exec", _mock_spawn_seq(claude_proc, diff_proc)):
         await tool._run_background("v01", "add evil host")
@@ -201,6 +205,7 @@ async def test_protected_paths_prepended_to_task(tool: RunClaudeCodeTool, notifi
 # ---------------------------------------------------------------------------
 # Cooldown
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cooldown_blocks_rapid_respawn(tool: RunClaudeCodeTool) -> None:

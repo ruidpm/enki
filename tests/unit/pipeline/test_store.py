@@ -1,4 +1,5 @@
 """Tests for PipelineStore."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +17,7 @@ def store(tmp_path: Path) -> PipelineStore:
 # ---------------------------------------------------------------------------
 # Pipeline lifecycle
 # ---------------------------------------------------------------------------
+
 
 def test_create_and_get(store: PipelineStore) -> None:
     store.create("p1", workspace_id="ws1", task="add auth")
@@ -50,6 +52,7 @@ def test_list_all(store: PipelineStore) -> None:
 # ---------------------------------------------------------------------------
 # Stage transitions
 # ---------------------------------------------------------------------------
+
 
 def test_advance_stage(store: PipelineStore) -> None:
     store.create("p1", workspace_id="ws1", task="t")
@@ -87,6 +90,7 @@ def test_set_status(store: PipelineStore) -> None:
 # ---------------------------------------------------------------------------
 # Artifacts
 # ---------------------------------------------------------------------------
+
 
 def test_save_and_get_artifact(store: PipelineStore) -> None:
     store.create("p1", workspace_id="ws1", task="t")

@@ -1,4 +1,5 @@
 """Security tests — ScopeCheckHook must resist all URL/path bypass techniques."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ def hook() -> ScopeCheckHook:
 # ---------------------------------------------------------------------------
 # URL allowlist bypasses
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_blocks_ftp_scheme(hook: ScopeCheckHook) -> None:
@@ -108,6 +110,7 @@ async def test_allows_allowed_host_no_port(hook: ScopeCheckHook) -> None:
 # ---------------------------------------------------------------------------
 # Path traversal bypasses
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_blocks_encoded_traversal(hook: ScopeCheckHook) -> None:

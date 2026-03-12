@@ -1,4 +1,5 @@
 """Calendar read tool — via gcalcli CLI. Read-only, no write methods exist."""
+
 from __future__ import annotations
 
 import asyncio
@@ -36,7 +37,11 @@ class CalendarReadTool:
         start = date.today().strftime("%Y-%m-%d")
         end = (date.today() + timedelta(days=days)).strftime("%Y-%m-%d")
         proc = await asyncio.create_subprocess_exec(
-            _GCALCLI, "agenda", "--nocolor", start, end,
+            _GCALCLI,
+            "agenda",
+            "--nocolor",
+            start,
+            end,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

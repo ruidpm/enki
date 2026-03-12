@@ -13,6 +13,7 @@ Design:
 - User gets a notification after each stage + a final summary with PR URL
 - Creates PR but never merges — the human always controls the merge button
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -165,6 +166,7 @@ class RunPipelineTool:
             return f"[ERROR] Workspace '{workspace_id}' not found. Use list_workspaces."
 
         from src.workspaces.store import TrustLevel
+
         trust_level: int = workspace.get("trust_level", TrustLevel.PROPOSE)
         if trust_level < TrustLevel.PROPOSE:
             return (
@@ -244,37 +246,25 @@ class RunPipelineTool:
                 _update_stage(stage)
 
                 if stage == PipelineStage.IMPLEMENT:
-                    result = await self._run_implement(
-                        pipeline_id, task, workspace_path, language, artifacts
-                    )
+                    result = await self._run_implement(pipeline_id, task, workspace_path, language, artifacts)
                 elif stage == PipelineStage.PR:
                     pr_confirmed = await self._notifier.ask_single_confirm(
                         reason=f"[Pipeline {pipeline_id}] Open pull request?",
-                        changes_summary=(
-                            f"Task: {task[:200]}\n"
-                            f"IMPLEMENT complete. Ready to push branch and open PR."
-                        ),
+                        changes_summary=(f"Task: {task[:200]}\nIMPLEMENT complete. Ready to push branch and open PR."),
                     )
                     if not pr_confirmed:
                         await self._notifier.send(
-                            f"[Pipeline {pipeline_id}] PR skipped — code is on the workspace. "
-                            f"Run create_pr manually when ready."
+                            f"[Pipeline {pipeline_id}] PR skipped — code is on the workspace. Run create_pr manually when ready."
                         )
                         self._pipelines.set_status(pipeline_id, PipelineStatus.COMPLETED)
                         _finish_job(success=True)
                         return
-                    result = await self._run_pr(
-                        pipeline_id, task, workspace_path, artifacts
-                    )
+                    result = await self._run_pr(pipeline_id, task, workspace_path, artifacts)
                 else:
-                    result = await self._run_llm_stage(
-                        pipeline_id, stage, task, context, artifacts
-                    )
+                    result = await self._run_llm_stage(pipeline_id, stage, task, context, artifacts)
 
                 artifacts[stage] = result
-                self._pipelines.save_artifact(
-                    pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result
-                )
+                self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
                 self._pipelines.advance_stage(
                     pipeline_id,
                     PipelineStage.next(stage) or stage,
@@ -292,35 +282,34 @@ class RunPipelineTool:
             log.error("run_pipeline_error", pipeline_id=pipeline_id, error=str(exc))
             self._pipelines.set_status(pipeline_id, PipelineStatus.ABORTED)
             _finish_job(success=False, error=str(exc))
-            await self._notifier.send(
-                f"[Pipeline {pipeline_id}] ERROR — pipeline aborted.\n{exc}"
-            )
+            await self._notifier.send(f"[Pipeline {pipeline_id}] ERROR — pipeline aborted.\n{exc}")
             return
 
         self._pipelines.set_status(pipeline_id, PipelineStatus.COMPLETED)
         _finish_job(success=True)
         pr_url = artifacts.get(PipelineStage.PR, "PR creation failed — check logs.")
         await self._notifier.send(
-            f"[Pipeline {pipeline_id}] DONE. All stages complete.\n"
-            f"PR: {pr_url}\n"
-            f"Review and merge when ready."
+            f"[Pipeline {pipeline_id}] DONE. All stages complete.\nPR: {pr_url}\nReview and merge when ready."
         )
 
     async def _create_gist(self, content: str, description: str) -> str | None:
         """Create a secret GitHub gist via gh CLI. Returns URL or None on failure."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "gh", "gist", "create", "--secret",
-                "--desc", description,
-                "--filename", "output.md",
+                "gh",
+                "gist",
+                "create",
+                "--secret",
+                "--desc",
+                description,
+                "--filename",
+                "output.md",
                 "-",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(input=content.encode()), timeout=30
-            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(input=content.encode()), timeout=30)
             if proc.returncode == 0:
                 return stdout.decode().strip()
         except Exception as exc:
@@ -348,9 +337,7 @@ class RunPipelineTool:
         if gist_url:
             await self._notifier.send(f"{prefix}\n{summary}\n\nFull report: {gist_url}")
         else:
-            await self._notifier.send(
-                f"{prefix}\n{summary}\n\n(full output too long; gist creation failed)"
-            )
+            await self._notifier.send(f"{prefix}\n{summary}\n\n(full output too long; gist creation failed)")
 
     async def _run_llm_stage(
         self,
@@ -376,6 +363,7 @@ class RunPipelineTool:
         extra_context = ""
         for round_ in range(_MAX_CLARIFICATION_ROUNDS + 1):
             prompt = _build_stage_prompt(stage, task, context + extra_context, artifacts)
+
             def _on_tokens(inp: int, out: int, _pid: str = pipeline_id) -> None:
                 if self._job_registry is not None:
                     self._job_registry.add_tokens(_pid, inp, out)
@@ -414,25 +402,14 @@ class RunPipelineTool:
                 return result  # happy path — got a real artifact
 
             if round_ == _MAX_CLARIFICATION_ROUNDS:
-                raise RuntimeError(
-                    f"Stage {stage} exceeded {_MAX_CLARIFICATION_ROUNDS} clarification rounds."
-                )
+                raise RuntimeError(f"Stage {stage} exceeded {_MAX_CLARIFICATION_ROUNDS} clarification rounds.")
 
-            questions = result[len(_CLARIFICATION_PREFIX):].strip()
-            await self._notifier.send(
-                f"[Pipeline {pipeline_id} — {stage.upper()} needs clarification]\n\n{questions}"
-            )
-            answer = await self._notifier.ask_free_text(
-                "Reply with your answers (5 min timeout):", timeout_s=300
-            )
+            questions = result[len(_CLARIFICATION_PREFIX) :].strip()
+            await self._notifier.send(f"[Pipeline {pipeline_id} — {stage.upper()} needs clarification]\n\n{questions}")
+            answer = await self._notifier.ask_free_text("Reply with your answers (5 min timeout):", timeout_s=300)
             if answer is None:
-                raise RuntimeError(
-                    f"Stage {stage} clarification timed out — no reply within 5 minutes."
-                )
-            extra_context += (
-                f"\n\n## Clarification round {round_ + 1}\n"
-                f"Questions:\n{questions}\n\nUser answers:\n{answer}"
-            )
+                raise RuntimeError(f"Stage {stage} clarification timed out — no reply within 5 minutes.")
+            extra_context += f"\n\n## Clarification round {round_ + 1}\nQuestions:\n{questions}\n\nUser answers:\n{answer}"
 
         raise RuntimeError("Unreachable")
 
@@ -471,9 +448,7 @@ class RunPipelineTool:
             raise RuntimeError(f"Failed to start Claude Code: {exc}") from exc
 
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_CCC_TIMEOUT
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_CCC_TIMEOUT)
         except TimeoutError as exc:
             proc.kill()
             await proc.wait()
@@ -504,23 +479,23 @@ class RunPipelineTool:
             # Branch may already exist — try switching to it
             await _run_git("git", "checkout", branch, cwd=workspace_path)
 
-        rc, _, err = await _run_git(
-            "git", "push", "-u", "origin", branch, cwd=workspace_path
-        )
+        rc, _, err = await _run_git("git", "push", "-u", "origin", branch, cwd=workspace_path)
         if rc != 0:
             raise RuntimeError(f"git push failed: {err}")
 
-        body = (
-            f"## Summary\n{impl[:600]}\n\n"
-            f"## Review notes\n{review[:400]}\n\n"
-            f"_Automated pipeline {pipeline_id}_"
-        )
+        body = f"## Summary\n{impl[:600]}\n\n## Review notes\n{review[:400]}\n\n_Automated pipeline {pipeline_id}_"
         rc, pr_url, err = await _run_git(
-            "gh", "pr", "create",
-            "--title", task[:72],
-            "--body", body,
-            "--head", branch,
-            "--base", "main",
+            "gh",
+            "pr",
+            "create",
+            "--title",
+            task[:72],
+            "--body",
+            body,
+            "--head",
+            branch,
+            "--base",
+            "main",
             cwd=workspace_path,
         )
         if rc != 0:
@@ -532,6 +507,7 @@ class RunPipelineTool:
 # ------------------------------------------------------------------
 # Prompt builders
 # ------------------------------------------------------------------
+
 
 def _build_stage_prompt(
     stage: str,

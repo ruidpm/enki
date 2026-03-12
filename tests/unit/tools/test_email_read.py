@@ -1,4 +1,5 @@
 """Tests for EmailReadTool — IMAP read-only flow."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -53,11 +54,14 @@ def _make_imap(messages: list[tuple[str, str, str]]) -> MagicMock:
 # Basic flow
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_returns_messages(tool: EmailReadTool) -> None:
-    mock_imap = _make_imap([
-        ("Hello world", "alice@example.com", "Mon, 1 Jan 2024 10:00:00 +0000"),
-    ])
+    mock_imap = _make_imap(
+        [
+            ("Hello world", "alice@example.com", "Mon, 1 Jan 2024 10:00:00 +0000"),
+        ]
+    )
     with patch("src.tools.email_read.imaplib.IMAP4_SSL", return_value=mock_imap):
         result = await tool.execute(count=5, unread_only=True)
     assert "Hello world" in result
@@ -91,17 +95,14 @@ async def test_imap_error_returns_error_string(tool: EmailReadTool) -> None:
 # Read-only — no smtplib import anywhere in the file
 # ---------------------------------------------------------------------------
 
+
 def test_smtplib_not_imported() -> None:
     import ast
     import pathlib
+
     src = pathlib.Path("src/tools/email_read.py").read_text()
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names = (
-                [a.name for a in node.names]
-                if isinstance(node, ast.Import)
-                else [node.module or ""]
-            )
-            assert not any("smtp" in n.lower() for n in names), \
-                "smtplib must never be imported in email_read.py"
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            assert not any("smtp" in n.lower() for n in names), "smtplib must never be imported in email_read.py"

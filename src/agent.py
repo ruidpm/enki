@@ -1,4 +1,5 @@
 """Core agent loop — Claude API + tool dispatch + model routing."""
+
 from __future__ import annotations
 
 import asyncio
@@ -137,10 +138,7 @@ class Agent:
         # Prune if over limit
         if estimated > max_tokens and len(self._conversation) > min_keep:
             # Drop messages from the front, 2 at a time (user+assistant pairs)
-            while (
-                self._estimate_tokens() > max_tokens
-                and len(self._conversation) > min_keep
-            ):
+            while self._estimate_tokens() > max_tokens and len(self._conversation) > min_keep:
                 self._conversation.pop(0)
             log.info(
                 "context_window_pruned",
@@ -208,14 +206,13 @@ class Agent:
         if isinstance(user_message, str):
             plain_text = user_message
         else:
-            plain_text = " ".join(
-                b.get("text", "") for b in user_message if b.get("type") == "text"
-            ) or "[media]"
+            plain_text = " ".join(b.get("text", "") for b in user_message if b.get("type") == "text") or "[media]"
 
         # Record user message in memory + audit
         self._memory.append_turn(self._session_id, "user", plain_text)
         await self._audit.log_tier2(
-            Tier2Event.USER_MESSAGE, self._session_id,
+            Tier2Event.USER_MESSAGE,
+            self._session_id,
             {"length": len(plain_text)},
         )
 
@@ -237,10 +234,7 @@ class Agent:
             last = self._conversation[-1]
             if last.get("role") == "assistant":
                 content = last.get("content", [])
-                has_orphan = any(
-                    getattr(b, "type", None) == "tool_use"
-                    for b in (content if isinstance(content, list) else [])
-                )
+                has_orphan = any(getattr(b, "type", None) == "tool_use" for b in (content if isinstance(content, list) else []))
                 if has_orphan:
                     self._conversation.pop()
                     log.warning("healed_orphaned_tool_use")
@@ -252,9 +246,7 @@ class Agent:
         self._conversation.append({"role": "user", "content": user_message})
 
         # Build cached system prompt + tool list (static — cache_control keeps tool list cached)
-        system_block: list[dict[str, Any]] = [
-            {"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}
-        ]
+        system_block: list[dict[str, Any]] = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
         tools = self._tool_definitions()
         if tools:
             tools = [*tools[:-1], {**tools[-1], "cache_control": {"type": "ephemeral"}}]
@@ -274,7 +266,8 @@ class Agent:
             cost = model_cost_usd(model, usage.input_tokens, usage.output_tokens)
             self._cost_guard.record_llm_call(usage.input_tokens, usage.output_tokens, cost)
             await self._audit.log_tier2(
-                Tier2Event.LLM_CALL, self._session_id,
+                Tier2Event.LLM_CALL,
+                self._session_id,
                 {
                     "model": model,
                     "input_tokens": usage.input_tokens,
@@ -285,9 +278,7 @@ class Agent:
 
             # If no tool use, return text response
             if response.stop_reason != "tool_use":
-                text = next(
-                    (b.text for b in response.content if hasattr(b, "text")), ""
-                )
+                text = next((b.text for b in response.content if hasattr(b, "text")), "")
                 self._conversation.append({"role": "assistant", "content": response.content})
                 self._memory.append_turn(self._session_id, "assistant", text)
                 return text
@@ -317,24 +308,28 @@ class Agent:
                     )
 
                     if not allow:
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": f"[BLOCKED by guardrail: {reason}]",
-                            "is_error": True,
-                        })
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": f"[BLOCKED by guardrail: {reason}]",
+                                "is_error": True,
+                            }
+                        )
                         continue
 
                     # Safe tool lookup — guardrails verified it's registered, but guard anyway
                     tool = self._tools.get(tool_name)
                     if tool is None:
                         log.error("tool_not_found_post_guardrail", tool=tool_name)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": f"[Internal error: tool '{tool_name}' not found]",
-                            "is_error": True,
-                        })
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": f"[Internal error: tool '{tool_name}' not found]",
+                                "is_error": True,
+                            }
+                        )
                         continue
 
                     try:
@@ -343,18 +338,19 @@ class Agent:
                         result = f"[Tool error: {exc}]"
                         log.error("tool_error", tool=tool_name, error=str(exc))
 
-                    result_preview = (
-                        result[:200] if isinstance(result, str) else str(result)[:200]
-                    )
+                    result_preview = result[:200] if isinstance(result, str) else str(result)[:200]
                     await self._audit.log_tier2(
-                        Tier2Event.TOOL_CALLED, self._session_id,
+                        Tier2Event.TOOL_CALLED,
+                        self._session_id,
                         {"tool": tool_name, "result_preview": result_preview},
                     )
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result,
+                        }
+                    )
 
             except Exception as exc:
                 log.error("tool_loop_error", error=str(exc))
@@ -364,12 +360,14 @@ class Agent:
                     if getattr(block, "type", None) == "tool_use":
                         block_id = getattr(block, "id", None)
                         if block_id and block_id not in collected_ids:
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": block_id,
-                                "content": f"[interrupted: {exc}]",
-                                "is_error": True,
-                            })
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block_id,
+                                    "content": f"[interrupted: {exc}]",
+                                    "is_error": True,
+                                }
+                            )
 
             self._conversation.append({"role": "user", "content": tool_results})
             self._cost_guard.record_autonomous_turn()

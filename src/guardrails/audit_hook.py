@@ -1,4 +1,5 @@
 """Audit hook — records every tool call outcome (always runs, never blocks)."""
+
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -24,9 +25,7 @@ class AuditHook:
         self._writer = writer
         self._session_id = session_id
 
-    async def check(
-        self, tool_name: str, params: dict[str, Any]
-    ) -> tuple[bool, str | None]:
+    async def check(self, tool_name: str, params: dict[str, Any]) -> tuple[bool, str | None]:
         # Never blocks — logging happens via record() after chain decision
         return True, None
 

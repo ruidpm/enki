@@ -1,4 +1,5 @@
 """Security tests — code_scanner must block all known bypass techniques."""
+
 from __future__ import annotations
 
 import pytest
@@ -12,6 +13,7 @@ def scanner() -> CodeScanner:
 
 
 # --- Blocked patterns ---
+
 
 def test_blocks_subprocess(scanner: CodeScanner) -> None:
     code = "import subprocess\nsubprocess.run(['ls'])"
@@ -27,7 +29,7 @@ def test_blocks_os_system(scanner: CodeScanner) -> None:
 
 
 def test_blocks_eval(scanner: CodeScanner) -> None:
-    result = scanner.scan("eval('__import__(\"os\").system(\"id\")')")
+    result = scanner.scan('eval(\'__import__("os").system("id")\')')
     assert result.blocked
 
 
@@ -58,6 +60,7 @@ def test_blocks_non_allowlisted_network(scanner: CodeScanner) -> None:
 
 # --- Bypass attempts ---
 
+
 def test_blocks_obfuscated_import(scanner: CodeScanner) -> None:
     # __builtins__['__import__']('os')
     result = scanner.scan("__builtins__['__import__']('os').system('id')")
@@ -70,9 +73,7 @@ def test_blocks_getattr_bypass(scanner: CodeScanner) -> None:
 
 
 def test_blocks_base64_encoded_exec(scanner: CodeScanner) -> None:
-    result = scanner.scan(
-        "import base64\nexec(base64.b64decode('aW1wb3J0IG9z').decode())"
-    )
+    result = scanner.scan("import base64\nexec(base64.b64decode('aW1wb3J0IG9z').decode())")
     assert result.blocked
 
 
@@ -82,6 +83,7 @@ def test_blocks_compile_exec(scanner: CodeScanner) -> None:
 
 
 # --- Allowed patterns ---
+
 
 def test_allows_clean_tool(scanner: CodeScanner) -> None:
     code = """
@@ -113,6 +115,7 @@ def test_allows_json_pathlib(scanner: CodeScanner) -> None:
 
 
 # --- Additional AST bypass techniques ---
+
 
 def test_blocks_shutil_module(scanner: CodeScanner) -> None:
     result = scanner.scan("import shutil\nshutil.rmtree('/data')")
@@ -221,9 +224,7 @@ def test_blocks_syntax_error_gracefully(scanner: CodeScanner) -> None:
 
 def test_blocks_nested_import_obfuscation(scanner: CodeScanner) -> None:
     """Triple-quoted string containing import attempt — regex catches __import__."""
-    result = scanner.scan(
-        'x = """\\n__import__("os").system("id")\\n"""\nexec(x)'
-    )
+    result = scanner.scan('x = """\\n__import__("os").system("id")\\n"""\nexec(x)')
     assert result.blocked
 
 

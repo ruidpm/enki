@@ -2,6 +2,7 @@
 
 All three actions require confirmation via the guardrail confirmation gate.
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -1,4 +1,5 @@
 """Tests for sliding-window conversation context management (C-03)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -84,9 +85,7 @@ async def test_conversation_pruned_when_exceeding_token_limit(tmp_path: Any) -> 
         agent._conversation.append({"role": "user", "content": f"message {i} " * 40})
         agent._conversation.append({"role": "assistant", "content": f"response {i} " * 40})
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("pruned reply")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("pruned reply"))):
         result = await agent.run_turn("new question")
 
     assert result == "pruned reply"
@@ -105,9 +104,7 @@ async def test_most_recent_turns_always_kept(tmp_path: Any) -> None:
         agent._conversation.append({"role": "user", "content": f"msg {i} " * 50})
         agent._conversation.append({"role": "assistant", "content": f"rsp {i} " * 50})
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("ok")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))):
         await agent.run_turn("final question")
 
     # Must have at least 3 prior pairs (6 messages) + new user + new assistant = 8
@@ -156,15 +153,13 @@ async def test_warning_logged_when_approaching_limit(tmp_path: Any) -> None:
         agent._conversation.append({"role": "user", "content": f"msg {i} " * 40})
         agent._conversation.append({"role": "assistant", "content": f"rsp {i} " * 40})
 
-    with structlog.testing.capture_logs() as cap_logs, patch.object(
-        agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))
+    with (
+        structlog.testing.capture_logs() as cap_logs,
+        patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))),
     ):
         await agent.run_turn("test")
 
-    assert any(
-        "context" in e.get("event", "").lower() and e.get("log_level") == "warning"
-        for e in cap_logs
-    )
+    assert any("context" in e.get("event", "").lower() and e.get("log_level") == "warning" for e in cap_logs)
 
 
 @pytest.mark.asyncio
@@ -177,9 +172,7 @@ async def test_no_pruning_when_under_limit(tmp_path: Any) -> None:
     agent._conversation.append({"role": "user", "content": "hello"})
     agent._conversation.append({"role": "assistant", "content": "hi there"})
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("ok")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))):
         await agent.run_turn("follow up")
 
     # Should be 4 messages: original pair + new pair

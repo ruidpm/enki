@@ -1,4 +1,5 @@
 """Tests for workspace-aware git/GitHub tools."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,6 +36,7 @@ def _make_proc(returncode: int = 0, stdout: str = "ok", stderr: str = "") -> Asy
 # GitStatusTool
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_git_status_no_workspace(ws_store: WorkspaceStore) -> None:
     tool = GitStatusTool(workspace_store=ws_store)
@@ -66,6 +68,7 @@ async def test_git_status_unknown_workspace(ws_store: WorkspaceStore) -> None:
 # GitDiffTool
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_git_diff_with_workspace(ws_store: WorkspaceStore, tmp_path: Path) -> None:
     tool = GitDiffTool(workspace_store=ws_store)
@@ -78,6 +81,7 @@ async def test_git_diff_with_workspace(ws_store: WorkspaceStore, tmp_path: Path)
 # ---------------------------------------------------------------------------
 # GitCommitTool
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_git_commit_with_workspace(ws_store: WorkspaceStore, tmp_path: Path) -> None:
@@ -98,9 +102,11 @@ async def test_git_commit_with_workspace(ws_store: WorkspaceStore, tmp_path: Pat
 # GitPushBranchTool
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_git_push_branch_with_workspace(tmp_path: Path) -> None:
     from src.workspaces.store import TrustLevel
+
     store = WorkspaceStore(tmp_path / "ws2.db")
     (tmp_path / "myapp2").mkdir()
     store.add("ws2", name="MyApp2", local_path=str(tmp_path / "myapp2"), trust_level=TrustLevel.AUTO_PUSH)
@@ -121,6 +127,7 @@ async def test_git_push_branch_blocks_main_regardless_of_workspace(ws_store: Wor
 # ---------------------------------------------------------------------------
 # CreatePRTool
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_create_pr_with_workspace(ws_store: WorkspaceStore, tmp_path: Path) -> None:
@@ -150,6 +157,7 @@ async def test_create_pr_no_workspace_uses_assistant_repo() -> None:
 # ---------------------------------------------------------------------------
 # No workspace_store configured but workspace_id given
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_git_status_no_store_with_workspace_id() -> None:

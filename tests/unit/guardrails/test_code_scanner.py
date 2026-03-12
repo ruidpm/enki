@@ -1,4 +1,5 @@
 """Tests for CodeScanner — including M-06 name collision bypass."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ def scanner() -> CodeScanner:
 # ---------------------------------------------------------------------------
 # Existing scanner behavior — sanity checks
 # ---------------------------------------------------------------------------
+
 
 def test_clean_code_passes(scanner: CodeScanner) -> None:
     code = "x = 1 + 2\ny = x * 3\n"
@@ -49,6 +51,7 @@ def test_import_os_blocked(scanner: CodeScanner) -> None:
 # ---------------------------------------------------------------------------
 # M-06: Name collision bypass prevention
 # ---------------------------------------------------------------------------
+
 
 def test_proposed_tool_named_restart_is_rejected(scanner: CodeScanner) -> None:
     """A proposed tool named restart.py would bypass the subprocess restriction."""

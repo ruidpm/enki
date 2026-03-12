@@ -1,4 +1,5 @@
 """Tests for SpawnAgentTool and SubAgentRunner."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ from src.tools.spawn_agent import SpawnAgentTool
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def config() -> MagicMock:
@@ -45,10 +47,9 @@ def spawn_tool(config: MagicMock, registry: dict) -> SpawnAgentTool:
 # SpawnAgentTool — basic
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_spawn_runs_task_and_returns_result(
-    spawn_tool: SpawnAgentTool, config: MagicMock
-) -> None:
+async def test_spawn_runs_task_and_returns_result(spawn_tool: SpawnAgentTool, config: MagicMock) -> None:
     with patch("src.tools.spawn_agent.SubAgentRunner") as MockRunner:
         runner = MagicMock()
         runner.run = AsyncMock(return_value=("Research complete: ...", 100))
@@ -61,9 +62,7 @@ async def test_spawn_runs_task_and_returns_result(
 
 
 @pytest.mark.asyncio
-async def test_spawn_never_passes_spawn_agent_to_subagent(
-    spawn_tool: SpawnAgentTool, registry: dict
-) -> None:
+async def test_spawn_never_passes_spawn_agent_to_subagent(spawn_tool: SpawnAgentTool, registry: dict) -> None:
     """Sub-agents must not be able to recursively spawn agents."""
     # Add spawn_agent to registry to verify it gets filtered
     registry["spawn_agent"] = MagicMock(name="spawn_agent")
@@ -112,10 +111,9 @@ async def test_spawn_unknown_tool_produces_empty_subset(spawn_tool: SpawnAgentTo
 # Concurrency limit
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_concurrent_limit_blocks_excess_spawns(
-    config: MagicMock, registry: dict
-) -> None:
+async def test_concurrent_limit_blocks_excess_spawns(config: MagicMock, registry: dict) -> None:
     tool = SpawnAgentTool(config=config, tool_registry=registry)
     # Exhaust all semaphore slots to simulate max active
     for _ in range(5):
@@ -133,6 +131,7 @@ async def test_concurrent_limit_blocks_excess_spawns(
 # SubAgentRunner — end-turn (no tool use)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_runner_returns_text_on_end_turn(config: MagicMock, mock_tool: MagicMock) -> None:
     text_block = MagicMock(spec=TextBlock)
@@ -149,8 +148,9 @@ async def test_runner_returns_text_on_end_turn(config: MagicMock, mock_tool: Mag
         client.messages.create = AsyncMock(return_value=response)
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(config=config, tools={"web_search": mock_tool},
-                                model="claude-haiku-4-5-20251001", max_tokens=1024)
+        runner = SubAgentRunner(
+            config=config, tools={"web_search": mock_tool}, model="claude-haiku-4-5-20251001", max_tokens=1024
+        )
         text, tokens = await runner.run("What is 2+2?")
 
     assert "Here is the answer." in text
@@ -185,8 +185,9 @@ async def test_runner_calls_tool_and_continues(config: MagicMock, mock_tool: Mag
         client.messages.create = AsyncMock(side_effect=[tool_use_response, end_response])
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(config=config, tools={"web_search": mock_tool},
-                                model="claude-haiku-4-5-20251001", max_tokens=1024)
+        runner = SubAgentRunner(
+            config=config, tools={"web_search": mock_tool}, model="claude-haiku-4-5-20251001", max_tokens=1024
+        )
         text, tokens = await runner.run("Search for news")
 
     assert "nothing new" in text
@@ -219,8 +220,7 @@ async def test_runner_handles_unknown_tool_gracefully(config: MagicMock) -> None
         client.messages.create = AsyncMock(side_effect=[tool_use_response, end_response])
         mock_client_cls.return_value = client
 
-        runner = SubAgentRunner(config=config, tools={},
-                                model="claude-haiku-4-5-20251001", max_tokens=1024)
+        runner = SubAgentRunner(config=config, tools={}, model="claude-haiku-4-5-20251001", max_tokens=1024)
         text, tokens = await runner.run("use a tool")
 
     assert isinstance(text, str)

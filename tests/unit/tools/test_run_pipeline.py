@@ -1,4 +1,5 @@
 """Tests for RunPipelineTool — autonomous pipeline orchestrator."""
+
 from __future__ import annotations
 
 import asyncio
@@ -108,6 +109,7 @@ def _make_tool(
 # Input validation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_missing_workspace_returns_error(
     tmp_path: Path,
@@ -129,6 +131,7 @@ async def test_read_only_workspace_blocks_pipeline(
 ) -> None:
     """READ_ONLY (trust_level=0) workspace must be blocked before confirmation."""
     from src.workspaces.store import TrustLevel
+
     workspace_store.add("readonly_ws", name="ReadOnly", local_path=str(tmp_path), trust_level=TrustLevel.READ_ONLY)
 
     tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store)
@@ -169,6 +172,7 @@ async def test_user_cancels_returns_cancelled(
 # Happy path — background job started
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_execute_returns_job_id_immediately(
     tmp_path: Path,
@@ -190,6 +194,7 @@ async def test_execute_returns_job_id_immediately(
 # ---------------------------------------------------------------------------
 # Background execution
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_background_saves_artifact_per_stage(
@@ -354,6 +359,7 @@ async def test_pipeline_marked_failed_on_error(
 # Clarification protocol
 # ---------------------------------------------------------------------------
 
+
 def _make_notifier_with_free_text(answer: str | None) -> AsyncMock:
     n = AsyncMock()
     n.ask_single_confirm = AsyncMock(return_value=True)
@@ -419,9 +425,7 @@ async def test_stage_clarification_timeout_raises(
 
     with patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner:
         runner_instance = AsyncMock()
-        runner_instance.run = AsyncMock(
-            return_value=("CLARIFICATION_NEEDED:\n1. What does the app do?", 50)
-        )
+        runner_instance.run = AsyncMock(return_value=("CLARIFICATION_NEEDED:\n1. What does the app do?", 50))
         MockRunner.return_value = runner_instance
 
         with pytest.raises(RuntimeError, match="timed out"):
@@ -450,9 +454,7 @@ async def test_stage_clarification_exceeds_max_rounds(
 
     with patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner:
         runner_instance = AsyncMock()
-        runner_instance.run = AsyncMock(
-            return_value=("CLARIFICATION_NEEDED:\n1. Still unclear.", 50)
-        )
+        runner_instance.run = AsyncMock(return_value=("CLARIFICATION_NEEDED:\n1. Still unclear.", 50))
         MockRunner.return_value = runner_instance
 
         with pytest.raises(RuntimeError, match="exceeded"):
@@ -499,6 +501,7 @@ async def test_stage_no_clarification_unaffected(
 # ---------------------------------------------------------------------------
 # Task cancellation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_abort_cancels_background_task(

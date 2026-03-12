@@ -3,6 +3,7 @@
 Split into two tools (read/write) so list_schedule needs no confirmation
 while manage_schedule always goes through the guardrail confirmation gate.
 """
+
 from __future__ import annotations
 
 import re
@@ -56,10 +57,7 @@ class ListScheduleTool:
             status = "✅ active" if j["enabled"] else "⏸ paused"
             last_run = j["last_run"] or "never"
             prompt_preview = (j["prompt"][:50] + "…") if len(j["prompt"]) > 50 else j["prompt"]
-            lines.append(
-                f"| {j['job_id']} | `{j['cron']}` | {status} "
-                f"| {last_run} | {j['run_count']} | {prompt_preview} |"
-            )
+            lines.append(f"| {j['job_id']} | `{j['cron']}` | {status} | {last_run} | {j['run_count']} | {prompt_preview} |")
         return "\n".join(lines)
 
 
@@ -141,6 +139,7 @@ class ManageScheduleTool:
         note = ""
         if self._scheduler is not None:
             from src.scheduler import ScheduledJob
+
             job = ScheduledJob(job_id=job_id, cron=cron.strip(), prompt=prompt)
             self._scheduler.add_job(job)
         else:
@@ -166,6 +165,7 @@ class ManageScheduleTool:
         note = ""
         if self._scheduler is not None:
             from src.scheduler import ScheduledJob
+
             job = ScheduledJob(job_id=job_id, cron=new_cron, prompt=new_prompt)
             self._scheduler.remove_job(job_id)
             self._scheduler.add_job(job)

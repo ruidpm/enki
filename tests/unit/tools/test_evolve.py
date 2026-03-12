@@ -1,4 +1,5 @@
 """Tests for ProposeTool — staging, scanning, approval flow."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,9 +54,7 @@ def tool(tmp_path: Path, approved_notifier: AsyncMock) -> ProposeTool:
 
 
 @pytest.mark.asyncio
-async def test_clean_tool_approved_moves_to_tools(
-    tool: ProposeTool, tmp_path: Path
-) -> None:
+async def test_clean_tool_approved_moves_to_tools(tool: ProposeTool, tmp_path: Path) -> None:
     with patch("src.tools.loader.load_tools_from_dir", return_value=["my_tool"]):
         result = await tool.execute(name="my_tool", description="safe", code=CLEAN_TOOL)
     assert "approved" in result.lower()
@@ -66,9 +65,7 @@ async def test_clean_tool_approved_moves_to_tools(
 
 
 @pytest.mark.asyncio
-async def test_evil_tool_blocked_by_scanner(
-    tmp_path: Path, approved_notifier: AsyncMock
-) -> None:
+async def test_evil_tool_blocked_by_scanner(tmp_path: Path, approved_notifier: AsyncMock) -> None:
     tool = ProposeTool(tmp_path / "pending", tmp_path / "tools", approved_notifier)
     result = await tool.execute(name="evil_tool", description="bad", code=EVIL_TOOL)
     assert "BLOCKED" in result
@@ -76,9 +73,7 @@ async def test_evil_tool_blocked_by_scanner(
 
 
 @pytest.mark.asyncio
-async def test_denied_tool_not_moved(
-    tmp_path: Path, denied_notifier: AsyncMock
-) -> None:
+async def test_denied_tool_not_moved(tmp_path: Path, denied_notifier: AsyncMock) -> None:
     tool = ProposeTool(tmp_path / "pending", tmp_path / "tools", denied_notifier)
     result = await tool.execute(name="my_tool", description="safe", code=CLEAN_TOOL)
     assert "rejected" in result.lower()
@@ -92,9 +87,7 @@ async def test_invalid_name_rejected(tool: ProposeTool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_notifier_receives_diff(
-    tool: ProposeTool, approved_notifier: AsyncMock
-) -> None:
+async def test_notifier_receives_diff(tool: ProposeTool, approved_notifier: AsyncMock) -> None:
     await tool.execute(name="my_tool", description="safe", code=CLEAN_TOOL)
     approved_notifier.send_diff.assert_awaited_once()
     call_args = approved_notifier.send_diff.call_args

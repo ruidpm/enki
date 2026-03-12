@@ -7,6 +7,7 @@ is intentional. For durable history, see: pipeline_store, team_tasks, audit DB.
 Thread-safe via a simple lock (asyncio tasks share the same thread but the
 lock prevents concurrent dict mutation from interleaved awaits).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -100,8 +101,7 @@ class JobRegistry:
     def list_running(self) -> list[dict[str, Any]]:
         """Return all currently running jobs, sorted by start time."""
         return sorted(
-            [self._enrich(dict(j)) for j in self._jobs.values()
-             if j["status"] == JobStatus.RUNNING],
+            [self._enrich(dict(j)) for j in self._jobs.values() if j["status"] == JobStatus.RUNNING],
             key=lambda j: j["started_at"],
         )
 

@@ -1,4 +1,5 @@
 """Tests for C-06: SQLite store locks — verify asyncio.Lock protects DB operations."""
+
 from __future__ import annotations
 
 import asyncio
@@ -30,6 +31,7 @@ def workspace_store(tmp_path: Path) -> WorkspaceStore:
 # Verify stores have an asyncio.Lock
 # ---------------------------------------------------------------------------
 
+
 def test_teams_store_has_lock(teams_store: TeamsStore) -> None:
     assert hasattr(teams_store, "_lock")
     assert isinstance(teams_store._lock, asyncio.Lock)
@@ -48,6 +50,7 @@ def test_workspace_store_has_lock(workspace_store: WorkspaceStore) -> None:
 # ---------------------------------------------------------------------------
 # Verify concurrent writes don't corrupt data (lock protects operations)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_concurrent_team_creates_are_serialized(teams_store: TeamsStore) -> None:
@@ -71,9 +74,7 @@ async def test_concurrent_pipeline_creates_are_serialized(pipeline_store: Pipeli
     """Multiple concurrent pipeline creates should all succeed."""
 
     async def _create(i: int) -> None:
-        await pipeline_store.create_async(
-            f"p-{i}", workspace_id="ws1", task=f"task {i}"
-        )
+        await pipeline_store.create_async(f"p-{i}", workspace_id="ws1", task=f"task {i}")
 
     await asyncio.gather(*[_create(i) for i in range(20)])
     all_p = await pipeline_store.list_all_async()
@@ -85,9 +86,7 @@ async def test_concurrent_workspace_adds_are_serialized(workspace_store: Workspa
     """Multiple concurrent workspace adds should all succeed."""
 
     async def _add(i: int) -> None:
-        await workspace_store.add_async(
-            f"ws-{i}", name=f"WS {i}", local_path=f"/path/{i}"
-        )
+        await workspace_store.add_async(f"ws-{i}", name=f"WS {i}", local_path=f"/path/{i}")
 
     await asyncio.gather(*[_add(i) for i in range(20)])
     all_ws = await workspace_store.list_all_async()

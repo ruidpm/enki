@@ -1,4 +1,5 @@
 """Tests for agent conversation safety: orphan healing, exception prevention, lock serialisation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -78,6 +79,7 @@ def _make_orphaned_tool_use_block(tool_id: str = "toolu_orphan") -> MagicMock:
 # Bug 1A: Healing — orphaned tool_use in conversation history
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_heals_orphaned_tool_use_on_next_turn(tmp_path: Any) -> None:
     """An orphaned assistant tool_use message is popped before the next turn."""
@@ -88,9 +90,7 @@ async def test_heals_orphaned_tool_use_on_next_turn(tmp_path: Any) -> None:
     agent._conversation.append({"role": "assistant", "content": [orphan_block]})
     assert len(agent._conversation) == 1
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("Recovered fine.")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("Recovered fine."))):
         result = await agent.run_turn("hello after crash")
 
     assert result == "Recovered fine."
@@ -109,8 +109,9 @@ async def test_heals_orphaned_tool_use_logs_warning(tmp_path: Any) -> None:
     orphan_block = _make_orphaned_tool_use_block()
     agent._conversation.append({"role": "assistant", "content": [orphan_block]})
 
-    with structlog.testing.capture_logs() as cap_logs, patch.object(
-        agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))
+    with (
+        structlog.testing.capture_logs() as cap_logs,
+        patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))),
     ):
         await agent.run_turn("next message")
 
@@ -129,9 +130,7 @@ async def test_no_healing_when_history_clean(tmp_path: Any) -> None:
     agent._conversation.append({"role": "user", "content": "previous message"})
     agent._conversation.append({"role": "assistant", "content": [user_block]})
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("next response")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("next response"))):
         result = await agent.run_turn("follow up")
 
     assert result == "next response"
@@ -142,6 +141,7 @@ async def test_no_healing_when_history_clean(tmp_path: Any) -> None:
 # ---------------------------------------------------------------------------
 # Bug 1B: Prevention — tool loop exception still appends tool_results
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_tool_loop_exception_still_appends_tool_results(tmp_path: Any) -> None:
@@ -169,9 +169,7 @@ async def test_tool_loop_exception_still_appends_tool_results(tmp_path: Any) -> 
 
     agent._guardrails.run = exploding_guardrail  # type: ignore[method-assign]
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        side_effect=[tool_response, text_response]
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(side_effect=[tool_response, text_response])):
         await agent.run_turn("do something")
 
     # Conversation must be well-formed: user, assistant(tool_use), user(tool_result), assistant(text)
@@ -208,9 +206,7 @@ async def test_tool_loop_exception_marks_result_as_error(tmp_path: Any) -> None:
 
     agent._guardrails.run = exploding_guardrail  # type: ignore[method-assign]
 
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        side_effect=[tool_response, text_response]
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(side_effect=[tool_response, text_response])):
         await agent.run_turn("trigger")
 
     tool_result_msg = agent._conversation[2]
@@ -221,6 +217,7 @@ async def test_tool_loop_exception_marks_result_as_error(tmp_path: Any) -> None:
 # ---------------------------------------------------------------------------
 # Bug 2: Concurrent turns serialised — conversation stays well-formed
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_concurrent_turns_produce_valid_conversation(tmp_path: Any) -> None:

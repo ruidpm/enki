@@ -1,4 +1,5 @@
 """Team performance report — pure SQL aggregation, zero LLM calls."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -50,9 +51,7 @@ class TeamReportTool:
         teams_by_id: dict[str, dict[str, Any]],
     ) -> str:
         lines = ["## Team Report\n"]
-        lines.append(
-            "| Team | Name | Tasks | Success | Avg dur | Tokens/mo | Budget left |"
-        )
+        lines.append("| Team | Name | Tasks | Success | Avg dur | Tokens/mo | Budget left |")
         lines.append("|------|------|-------|---------|---------|-----------|-------------|")
 
         for s in stats:

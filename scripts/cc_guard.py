@@ -9,21 +9,24 @@ Exits 1 (with explanation to stderr) to block, exits 0 to allow.
 PROTECTED_PATHS is defined here independently of the main codebase
 so this guard works even if imports are broken.
 """
+
 from __future__ import annotations
 
 import json
 import sys
 
 # Mirror of PROTECTED_PATHS in src/tools/claude_code.py — keep in sync.
-PROTECTED_PATHS: frozenset[str] = frozenset({
-    "src/guardrails/",
-    "src/audit/",
-    "src/agent.py",
-    "main.py",
-    "src/config.py",
-    "scripts/cc_guard.py",  # guard cannot disable itself
-    ".claude/settings.json",  # hook config cannot be removed
-})
+PROTECTED_PATHS: frozenset[str] = frozenset(
+    {
+        "src/guardrails/",
+        "src/audit/",
+        "src/agent.py",
+        "main.py",
+        "src/config.py",
+        "scripts/cc_guard.py",  # guard cannot disable itself
+        ".claude/settings.json",  # hook config cannot be removed
+    }
+)
 
 
 def _extract_path(tool_name: str, tool_input: dict[str, object]) -> str:

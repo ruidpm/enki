@@ -1,4 +1,5 @@
 """Tests for sub-agent cost aggregation to main cost_guard (C-04)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock

@@ -1,4 +1,5 @@
 """Tests for C-09: CancelledError must be re-raised after cleanup in pipeline."""
+
 from __future__ import annotations
 
 import asyncio

@@ -1,4 +1,5 @@
 """Tests for confirmation-requiring tools filtered from sub-agent tool subsets (C-05)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -53,12 +54,9 @@ def test_spawn_team_filters_confirmation_tools() -> None:
     # Build the subset the same way execute() would
     team = store.get_team("test")
     from src.tools.spawn_team import _EXCLUDED_TOOLS
+
     allowed_tool_names = set(team["tools"]) - _EXCLUDED_TOOLS - REQUIRES_CONFIRM
-    subset = {
-        name: t
-        for name, t in registry.items()
-        if name in allowed_tool_names
-    }
+    subset = {name: t for name, t in registry.items() if name in allowed_tool_names}
 
     # Only web_search and notes should be included
     assert "web_search" in subset
@@ -96,9 +94,7 @@ def test_spawn_agent_filters_confirmation_tools() -> None:
     # The tool builds subset from requested tools — should filter REQUIRES_CONFIRM
     requested = ["web_search", "manage_team", "git_commit"]
     subset = {
-        name: t
-        for name, t in registry.items()
-        if name in requested and name != "spawn_agent" and name not in REQUIRES_CONFIRM
+        name: t for name, t in registry.items() if name in requested and name != "spawn_agent" and name not in REQUIRES_CONFIRM
     }
 
     assert "web_search" in subset

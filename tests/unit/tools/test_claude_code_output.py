@@ -1,4 +1,5 @@
 """Tests for gist + Enki summary output handling in RunClaudeCodeTool."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,9 +55,7 @@ async def test_short_output_sent_directly(tool: RunClaudeCodeTool, notifier: Mag
 
 
 @pytest.mark.asyncio
-async def test_short_output_without_agent_sent_directly(
-    tool: RunClaudeCodeTool, notifier: MagicMock
-) -> None:
+async def test_short_output_without_agent_sent_directly(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     """Long output but no agent → falls back to truncated direct send."""
     long_output = "x" * (_GIST_THRESHOLD + 100)
     # tool._agent is None by default
@@ -67,9 +66,7 @@ async def test_short_output_without_agent_sent_directly(
 
 
 @pytest.mark.asyncio
-async def test_long_output_creates_gist_and_summarizes(
-    tool: RunClaudeCodeTool, notifier: MagicMock
-) -> None:
+async def test_long_output_creates_gist_and_summarizes(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     """Long output + agent → gist created, summary sent with URL."""
     tool.set_agent(_mock_agent("• Added feature X\n• Fixed bug Y"))
     long_output = "A" * (_GIST_THRESHOLD + 100)
@@ -88,9 +85,7 @@ async def test_long_output_creates_gist_and_summarizes(
 
 
 @pytest.mark.asyncio
-async def test_gist_failure_degrades_gracefully(
-    tool: RunClaudeCodeTool, notifier: MagicMock
-) -> None:
+async def test_gist_failure_degrades_gracefully(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     """Gist creation fails → still send summary with failure note."""
     tool.set_agent(_mock_agent("• Work done"))
     long_output = "B" * (_GIST_THRESHOLD + 100)
@@ -108,9 +103,7 @@ async def test_gist_failure_degrades_gracefully(
 
 
 @pytest.mark.asyncio
-async def test_agent_summary_failure_degrades_gracefully(
-    tool: RunClaudeCodeTool, notifier: MagicMock
-) -> None:
+async def test_agent_summary_failure_degrades_gracefully(tool: RunClaudeCodeTool, notifier: MagicMock) -> None:
     """If agent.run_turn raises → fall back to raw truncation."""
     agent = MagicMock()
     agent.run_turn = AsyncMock(side_effect=RuntimeError("LLM unavailable"))

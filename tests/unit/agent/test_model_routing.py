@@ -1,4 +1,5 @@
 """Tests for model routing logic."""
+
 from __future__ import annotations
 
 from src.agent import ModelTier, classify_complexity
@@ -29,6 +30,4 @@ def test_use_opus_phrase() -> None:
 
 
 def test_complex_planning_routes_to_opus() -> None:
-    assert classify_complexity(
-        "architect a full migration plan for my database with rollback strategy"
-    ) == ModelTier.OPUS
+    assert classify_complexity("architect a full migration plan for my database with rollback strategy") == ModelTier.OPUS

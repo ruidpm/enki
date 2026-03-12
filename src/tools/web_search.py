@@ -1,4 +1,5 @@
 """Web search tool — Brave Search via curl."""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,9 +17,7 @@ _BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 
 class WebSearchTool:
     name = "web_search"
-    description = (
-        "Search the web using Brave Search. Returns top results with title, URL, and snippet."
-    )
+    description = "Search the web using Brave Search. Returns top results with title, URL, and snippet."
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -38,9 +37,13 @@ class WebSearchTool:
         url = f"{_BRAVE_URL}?q={encoded}&count={count}"
 
         cmd = [
-            _CURL, "-sf", "--compressed",
-            "-H", "Accept: application/json",
-            "-H", f"X-Subscription-Token: {self._api_key}",
+            _CURL,
+            "-sf",
+            "--compressed",
+            "-H",
+            "Accept: application/json",
+            "-H",
+            f"X-Subscription-Token: {self._api_key}",
             url,
         ]
 

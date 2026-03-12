@@ -1,4 +1,5 @@
 """Tests for smart restart — Docker vs local process restart."""
+
 from __future__ import annotations
 
 import os
@@ -31,8 +32,7 @@ def test_is_running_in_docker_false() -> None:
 @pytest.mark.asyncio
 async def test_restart_in_docker_sends_sigterm(confirmed_notifier: AsyncMock) -> None:
     tool = RequestRestartTool(confirmed_notifier)
-    with patch("src.tools.restart.is_running_in_docker", return_value=True), \
-         patch("src.tools.restart.os.kill") as mock_kill:
+    with patch("src.tools.restart.is_running_in_docker", return_value=True), patch("src.tools.restart.os.kill") as mock_kill:
         result = await tool.execute(reason="test", changes_summary="x")
     mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
     assert "initiated" in result.lower()
@@ -41,10 +41,12 @@ async def test_restart_in_docker_sends_sigterm(confirmed_notifier: AsyncMock) ->
 @pytest.mark.asyncio
 async def test_restart_locally_calls_execv(confirmed_notifier: AsyncMock) -> None:
     tool = RequestRestartTool(confirmed_notifier)
-    with patch("src.tools.restart.is_running_in_docker", return_value=False), \
-         patch("src.tools.restart.os.execv") as mock_execv, \
-         patch("src.tools.restart.sys.executable", "/usr/bin/python3"), \
-         patch("src.tools.restart.sys.argv", ["main.py", "chat"]):
+    with (
+        patch("src.tools.restart.is_running_in_docker", return_value=False),
+        patch("src.tools.restart.os.execv") as mock_execv,
+        patch("src.tools.restart.sys.executable", "/usr/bin/python3"),
+        patch("src.tools.restart.sys.argv", ["main.py", "chat"]),
+    ):
         result = await tool.execute(reason="test", changes_summary="x")
     mock_execv.assert_called_once_with("/usr/bin/python3", ["/usr/bin/python3", "main.py", "chat"])
     assert "initiated" in result.lower()

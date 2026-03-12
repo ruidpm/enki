@@ -4,6 +4,7 @@ SECURITY NOTE: This is the ONLY file in the codebase permitted to use subprocess
 The subprocess import is kept for the local (non-Docker) os.execv path.
 code_scanner.py grants subprocess a path-based exception for this file only.
 """
+
 from __future__ import annotations
 
 import os

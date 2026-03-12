@@ -1,4 +1,5 @@
 """Tests for MemoryCompactor — merge/dedup flow and prompt quality."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -45,6 +46,7 @@ def compactor(store: MemoryStore, facts_path: Path) -> MemoryCompactor:
 # No turns — nothing happens
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_empty_session_returns_empty(compactor: MemoryCompactor, facts_path: Path) -> None:
     facts = await compactor.compact_session("sess_empty")
@@ -56,10 +58,9 @@ async def test_empty_session_returns_empty(compactor: MemoryCompactor, facts_pat
 # Fresh facts.md (no existing file)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_creates_facts_md_when_new(
-    compactor: MemoryCompactor, store: MemoryStore, facts_path: Path
-) -> None:
+async def test_creates_facts_md_when_new(compactor: MemoryCompactor, store: MemoryStore, facts_path: Path) -> None:
     store.append_turn("sess1", "user", "I prefer short answers")
     store.append_turn("sess1", "assistant", "Got it")
 
@@ -74,10 +75,9 @@ async def test_creates_facts_md_when_new(
 # facts.md is REWRITTEN not appended
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_rewrites_not_appends(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_rewrites_not_appends(store: MemoryStore, facts_path: Path) -> None:
     # Pre-populate facts.md with existing fact
     facts_path.write_text("- User lives in Porto\n")
 
@@ -101,10 +101,9 @@ async def test_rewrites_not_appends(
 # Compactor calls haiku twice (extract then merge)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_two_llm_calls_when_existing_facts(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_two_llm_calls_when_existing_facts(store: MemoryStore, facts_path: Path) -> None:
     facts_path.write_text("- User is house-hunting\n")
 
     client = _make_client("User is house-hunting\nUser prefers haiku")
@@ -119,9 +118,7 @@ async def test_two_llm_calls_when_existing_facts(
 
 
 @pytest.mark.asyncio
-async def test_one_llm_call_when_no_existing_facts(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_one_llm_call_when_no_existing_facts(store: MemoryStore, facts_path: Path) -> None:
     # No existing facts.md
     client = _make_client("User prefers concise")
     compactor = MemoryCompactor(store=store, anthropic_client=client, facts_path=facts_path)
@@ -138,10 +135,9 @@ async def test_one_llm_call_when_no_existing_facts(
 # facts.md format: one fact per line prefixed with "- "
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_facts_md_format(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_facts_md_format(store: MemoryStore, facts_path: Path) -> None:
     client = _make_client("User lives in Lisbon\nUser works on personal assistant project")
     compactor = MemoryCompactor(store=store, anthropic_client=client, facts_path=facts_path)
 
@@ -155,6 +151,7 @@ async def test_facts_md_format(
 # ---------------------------------------------------------------------------
 # Prompt quality tests — personal facts must be protected
 # ---------------------------------------------------------------------------
+
 
 def test_extract_prompt_mentions_personal_relationships() -> None:
     """_EXTRACT_PROMPT must instruct extraction of personal relationships and names."""

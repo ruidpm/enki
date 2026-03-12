@@ -1,4 +1,5 @@
 """Tests for ScopeCheckHook — including adversarial bypass attempts."""
+
 from __future__ import annotations
 
 import pytest

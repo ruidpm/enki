@@ -7,6 +7,7 @@ A pipeline runs through these stages in order, with a user gate between each:
 
 Each stage must produce an artifact before the user can advance to the next.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -164,10 +165,7 @@ class ManagePipelineTool:
             log.info("pipeline_completed", pipeline_id=pipeline_id)
             pr_artifact = self._pipelines.get_artifact(pipeline_id, PipelineStage.PR)
             pr_url = pr_artifact["content"] if pr_artifact else "unknown"
-            return (
-                f"Pipeline {pipeline_id} completed.\n"
-                f"PR: {pr_url}"
-            )
+            return f"Pipeline {pipeline_id} completed.\nPR: {pr_url}"
 
         self._pipelines.advance_stage(pipeline_id, next_stage)
         team = _STAGE_TEAM.get(next_stage, "?")
@@ -197,10 +195,7 @@ class ManagePipelineTool:
         if self._job_registry is not None:
             killed = self._job_registry.cancel(pipeline_id)
         log.info("pipeline_aborted", pipeline_id=pipeline_id, task_cancelled=killed)
-        return (
-            f"Pipeline {pipeline_id} aborted."
-            + (" Background task cancelled." if killed else "")
-        )
+        return f"Pipeline {pipeline_id} aborted." + (" Background task cancelled." if killed else "")
 
     async def _list(self, **kwargs: Any) -> str:
         pipelines = self._pipelines.list_active()

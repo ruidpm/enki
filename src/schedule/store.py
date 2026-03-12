@@ -1,4 +1,5 @@
 """SQLite-backed persistent cron job registry."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -27,9 +28,7 @@ class ScheduleStore:
         """)
         self._conn.commit()
 
-    def upsert(
-        self, job_id: str, cron: str, prompt: str, enabled: bool = True
-    ) -> None:
+    def upsert(self, job_id: str, cron: str, prompt: str, enabled: bool = True) -> None:
         self._conn.execute(
             """INSERT INTO scheduled_jobs (job_id, cron, prompt, enabled)
                VALUES (?, ?, ?, ?)
@@ -42,21 +41,15 @@ class ScheduleStore:
         self._conn.commit()
 
     def get(self, job_id: str) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            "SELECT * FROM scheduled_jobs WHERE job_id = ?", (job_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM scheduled_jobs WHERE job_id = ?", (job_id,)).fetchone()
         return dict(row) if row else None
 
     def list_enabled(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM scheduled_jobs WHERE enabled = 1 ORDER BY created_at"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM scheduled_jobs WHERE enabled = 1 ORDER BY created_at").fetchall()
         return [dict(r) for r in rows]
 
     def list_all(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT * FROM scheduled_jobs ORDER BY created_at"
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM scheduled_jobs ORDER BY created_at").fetchall()
         return [dict(r) for r in rows]
 
     def set_enabled(self, job_id: str, enabled: bool) -> bool:
@@ -72,9 +65,7 @@ class ScheduleStore:
     def remove(self, job_id: str) -> bool:
         if self.get(job_id) is None:
             return False
-        self._conn.execute(
-            "DELETE FROM scheduled_jobs WHERE job_id = ?", (job_id,)
-        )
+        self._conn.execute("DELETE FROM scheduled_jobs WHERE job_id = ?", (job_id,))
         self._conn.commit()
         return True
 

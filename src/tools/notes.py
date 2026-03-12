@@ -1,4 +1,5 @@
 """Project notes tool — markdown files via CLI (cat, grep, tee)."""
+
 from __future__ import annotations
 
 import re

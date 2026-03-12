@@ -1,4 +1,5 @@
 """Unit tests for JobRegistry token tracking."""
+
 from __future__ import annotations
 
 from src.jobs import JobRegistry

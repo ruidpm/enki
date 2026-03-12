@@ -1,4 +1,5 @@
 """Audit event type definitions — Tier 1 (security) and Tier 2 (activity)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Any
 
 class Tier1Event(StrEnum):
     """Security events — stored forever, chain-hashed."""
+
     GUARDRAIL_BLOCK = "GUARDRAIL_BLOCK"
     COST_BLOCK = "COST_BLOCK"
     LOOP_DETECTED = "LOOP_DETECTED"
@@ -26,6 +28,7 @@ class Tier1Event(StrEnum):
 
 class Tier2Event(StrEnum):
     """Activity events — metadata only, 30-day rolling."""
+
     USER_MESSAGE = "USER_MESSAGE"
     LLM_CALL = "LLM_CALL"
     TOOL_CALLED = "TOOL_CALLED"

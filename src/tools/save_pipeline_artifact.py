@@ -2,6 +2,7 @@
 
 Teams call this to record their output so the pipeline gate can advance.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -61,7 +62,8 @@ class SavePipelineArtifactTool:
 
         if not pipeline_id or not stage or not artifact_type or not content:
             missing = [
-                f for f, v in [
+                f
+                for f, v in [
                     ("pipeline_id", pipeline_id),
                     ("stage", stage),
                     ("artifact_type", artifact_type),
@@ -72,10 +74,7 @@ class SavePipelineArtifactTool:
             return f"[ERROR] Required fields missing: {', '.join(missing)}"
 
         if stage not in _VALID_STAGES:
-            return (
-                f"[ERROR] Invalid stage '{stage}'. "
-                f"Valid stages: {', '.join(PipelineStage.ORDERED)}"
-            )
+            return f"[ERROR] Invalid stage '{stage}'. Valid stages: {', '.join(PipelineStage.ORDERED)}"
 
         p = self._store.get(pipeline_id)
         if p is None:

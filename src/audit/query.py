@@ -1,4 +1,5 @@
 """Query interface for the audit database."""
+
 from __future__ import annotations
 
 import json
@@ -33,12 +34,8 @@ class AuditQuery:
             args.append(session_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._db._conn() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM tier1 {where} ORDER BY id ASC", args
-            ).fetchall()
-        return [
-            {**dict(row), "data": json.loads(row["data"])} for row in rows
-        ]
+            rows = conn.execute(f"SELECT * FROM tier1 {where} ORDER BY id ASC", args).fetchall()
+        return [{**dict(row), "data": json.loads(row["data"])} for row in rows]
 
     def get_session_summary(self, session_id: str) -> dict[str, Any]:
         """Return Tier 2 activity summary for one session."""
@@ -58,9 +55,7 @@ class AuditQuery:
             clauses.append("timestamp >= ?")
             args.append(since.isoformat())
         with self._db._conn() as conn:
-            rows = conn.execute(
-                f"SELECT data FROM tier2 WHERE {' AND '.join(clauses)}", args
-            ).fetchall()
+            rows = conn.execute(f"SELECT data FROM tier2 WHERE {' AND '.join(clauses)}", args).fetchall()
         total_input = total_output = 0
         total_cost = 0.0
         by_model: dict[str, dict[str, Any]] = {}

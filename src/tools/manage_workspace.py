@@ -3,6 +3,7 @@
 ListWorkspacesTool  — read-only, no confirmation required.
 ManageWorkspaceTool — write ops (add/clone/init/remove/set_trust), in REQUIRES_CONFIRM.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,10 +27,7 @@ _TRUST_LABELS: dict[int, str] = {
 
 class ListWorkspacesTool:
     name = "list_workspaces"
-    description = (
-        "List all registered external project workspaces with their trust level, "
-        "language, and last used time."
-    )
+    description = "List all registered external project workspaces with their trust level, language, and last used time."
     input_schema: dict[str, Any] = {"type": "object", "properties": {}}
 
     def __init__(self, store: WorkspaceStore, workspaces_base_dir: Path = Path("workspaces")) -> None:
@@ -110,9 +108,7 @@ class ManageWorkspaceTool:
         self._base_dir = workspaces_base_dir.resolve()
         # Update local_path description with the actual base dir
         base = str(self._base_dir)
-        self.input_schema["properties"]["local_path"]["description"] = (
-            f"Absolute path. For new workspaces, use {base}/<name>."
-        )
+        self.input_schema["properties"]["local_path"]["description"] = f"Absolute path. For new workspaces, use {base}/<name>."
 
     def _validate_path(self, local_path: str) -> str | None:
         """Validate that local_path resolves to within the workspaces base dir.
@@ -195,7 +191,9 @@ class ManageWorkspaceTool:
         path.mkdir(parents=True, exist_ok=True)
 
         proc = await asyncio.create_subprocess_exec(
-            "git", "init", cwd=str(path),
+            "git",
+            "init",
+            cwd=str(path),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -236,7 +234,10 @@ class ManageWorkspaceTool:
             return "[ERROR] Clone URL must start with https://, http://, or git@ (SSH)."
 
         proc = await asyncio.create_subprocess_exec(
-            "git", "clone", git_remote, local_path,
+            "git",
+            "clone",
+            git_remote,
+            local_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -270,10 +271,7 @@ class ManageWorkspaceTool:
             return f"[ERROR] Workspace '{workspace_id}' not found."
 
         log.info("workspace_removed", workspace_id=workspace_id)
-        return (
-            f"Workspace '{workspace_id}' unregistered. "
-            "Local files were NOT deleted — remove them manually if needed."
-        )
+        return f"Workspace '{workspace_id}' unregistered. Local files were NOT deleted — remove them manually if needed."
 
     async def _set_trust(self, **kwargs: Any) -> str:
         workspace_id: str = kwargs.get("workspace_id", "").strip()
@@ -283,8 +281,7 @@ class ManageWorkspaceTool:
             return "[ERROR] workspace_id is required."
         if trust_level is None or trust_level not in TrustLevel.ALL:  # type: ignore[attr-defined]
             return (
-                f"[ERROR] Invalid trust_level '{trust_level}'. "
-                "Valid: 0=read_only 1=propose 2=auto_commit 3=auto_push 4=trusted"
+                f"[ERROR] Invalid trust_level '{trust_level}'. Valid: 0=read_only 1=propose 2=auto_commit 3=auto_push 4=trusted"
             )
 
         updated = self._store.update_trust(workspace_id, trust_level)

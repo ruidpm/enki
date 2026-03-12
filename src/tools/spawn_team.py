@@ -4,6 +4,7 @@ Tasks run in the background — execute() returns immediately with a job ID.
 The team works independently, then reports back to Enki (the main agent).
 Enki synthesizes the result and decides what to surface to the user.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -89,17 +90,10 @@ class SpawnTeamTool:
         used = self._store.monthly_tokens_used(team_id)
         budget = team["monthly_token_budget"]
         if used >= budget:
-            return (
-                f"[BLOCKED] Team '{team_id}' has exhausted its monthly token budget "
-                f"({used}/{budget} tokens used)."
-            )
+            return f"[BLOCKED] Team '{team_id}' has exhausted its monthly token budget ({used}/{budget} tokens used)."
 
         allowed_tool_names: set[str] = set(team["tools"]) - _EXCLUDED_TOOLS - REQUIRES_CONFIRM
-        subset = {
-            name: tool
-            for name, tool in self._registry.items()
-            if name in allowed_tool_names
-        }
+        subset = {name: tool for name, tool in self._registry.items() if name in allowed_tool_names}
 
         job_id = uuid.uuid4().hex[:8]
         log.info(
@@ -112,8 +106,10 @@ class SpawnTeamTool:
 
         if self._job_registry is not None:
             self._job_registry.start(
-                job_id, job_type="team",
-                description=f"{team_id}: {task[:60]}", model=self._config.haiku_model,
+                job_id,
+                job_type="team",
+                description=f"{team_id}: {task[:60]}",
+                model=self._config.haiku_model,
             )
 
         bg_task = asyncio.create_task(self._run_background(job_id, team_id, team, subset, task))
@@ -139,6 +135,7 @@ class SpawnTeamTool:
         raw_result = ""
 
         try:
+
             def _on_tokens(inp: int, out: int) -> None:
                 if self._job_registry is not None:
                     self._job_registry.add_tokens(job_id, inp, out)
@@ -209,8 +206,6 @@ class SpawnTeamTool:
             # No agent wired (e.g. tests or CLI without agent set) — send raw
             status = "✅" if success else "❌"
             try:
-                await self._notifier.send(
-                    f"{status} **Team '{team_id}'** finished job `{job_id}`\n\n{raw_result}"
-                )
+                await self._notifier.send(f"{status} **Team '{team_id}'** finished job `{job_id}`\n\n{raw_result}")
             except Exception as exc:
                 log.error("spawn_team_raw_send_failed", job_id=job_id, error=str(exc))

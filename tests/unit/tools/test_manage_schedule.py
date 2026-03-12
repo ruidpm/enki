@@ -1,4 +1,5 @@
 """Tests for ListScheduleTool and ManageScheduleTool."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,6 +42,7 @@ def manage_tool(store: ScheduleStore, scheduler: MagicMock) -> ManageScheduleToo
 # ListScheduleTool
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_empty_store(list_tool: ListScheduleTool) -> None:
     result = await list_tool.execute()
@@ -60,6 +62,7 @@ async def test_list_shows_all_jobs(list_tool: ListScheduleTool, store: ScheduleS
 # ---------------------------------------------------------------------------
 # ManageScheduleTool — add
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_add_persists_and_calls_scheduler(
@@ -89,15 +92,14 @@ async def test_add_rejects_invalid_cron(manage_tool: ManageScheduleTool) -> None
 
 @pytest.mark.asyncio
 async def test_add_rejects_too_few_fields(manage_tool: ManageScheduleTool) -> None:
-    result = await manage_tool.execute(
-        action="add", job_id="bad", cron="0 8 * *", prompt="p"
-    )
+    result = await manage_tool.execute(action="add", job_id="bad", cron="0 8 * *", prompt="p")
     assert "invalid" in result.lower() or "error" in result.lower()
 
 
 # ---------------------------------------------------------------------------
 # ManageScheduleTool — pause / resume
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_pause_disables_and_unschedules(
@@ -130,10 +132,9 @@ async def test_resume_enables_and_reschedules(
 # ManageScheduleTool — remove
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_remove_deletes(
-    manage_tool: ManageScheduleTool, store: ScheduleStore, scheduler: MagicMock
-) -> None:
+async def test_remove_deletes(manage_tool: ManageScheduleTool, store: ScheduleStore, scheduler: MagicMock) -> None:
     store.upsert("bye", "0 8 * * *", "prompt")
     result = await manage_tool.execute(action="remove", job_id="bye")
     assert "removed" in result.lower()
@@ -144,6 +145,7 @@ async def test_remove_deletes(
 # ---------------------------------------------------------------------------
 # Error cases
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_unknown_job_returns_error(manage_tool: ManageScheduleTool) -> None:

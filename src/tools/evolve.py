@@ -1,4 +1,5 @@
 """Self-evolution gateway — propose_tool stages new tools for user approval."""
+
 from __future__ import annotations
 
 import hashlib
@@ -28,6 +29,7 @@ class ProposeTool:
     Meta-tool: agent proposes a new tool.
     Code is scanned, staged to tools_pending/, user is notified.
     """
+
     name = "propose_tool"
     description = (
         "Propose a new tool to extend your capabilities. "
@@ -113,6 +115,7 @@ class ProposeTool:
         # Activate immediately — no restart needed for new tool files
         try:
             from .loader import load_tools_from_dir
+
             newly = load_tools_from_dir(self._tools_dir)
             if name in newly:
                 return f"Tool '{name}' approved, registered, and live. SHA256: {code_hash[:16]}"
@@ -125,6 +128,4 @@ class ProposeTool:
                 )
         except Exception as exc:
             log.warning("tool_auto_activate_failed", name=name, error=str(exc))
-            return (
-                f"Tool '{name}' saved but activation error: {exc}. SHA256: {code_hash[:16]}"
-            )
+            return f"Tool '{name}' saved but activation error: {exc}. SHA256: {code_hash[:16]}"

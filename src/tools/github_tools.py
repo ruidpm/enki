@@ -4,6 +4,7 @@ All tools accept an optional workspace_id parameter.
 When provided, operations run in the workspace's local_path directory.
 When omitted, operations run in the assistant's own repository (CWD).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,6 +38,7 @@ def _resolve_cwd(workspace_id: str | None, workspace_store: object) -> str | tup
     if workspace_store is None:
         return None, "[ERROR] No workspace store configured."
     from src.workspaces.store import WorkspaceStore
+
     assert isinstance(workspace_store, WorkspaceStore)
     ws = workspace_store.get(workspace_id)
     if ws is None:
@@ -54,6 +56,7 @@ def _check_trust(workspace_id: str | None, workspace_store: object, required: in
     if workspace_store is None:
         return "[ERROR] Workspace store not configured but workspace_id was provided."
     from src.workspaces.store import TrustLevel, WorkspaceStore
+
     assert isinstance(workspace_store, WorkspaceStore)
     ws = workspace_store.get(workspace_id)
     if ws is None:
@@ -143,6 +146,7 @@ class GitCommitTool:
 
     async def execute(self, **kwargs: Any) -> str:
         from src.workspaces.store import TrustLevel
+
         if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
             return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
@@ -159,10 +163,7 @@ class GitCommitTool:
 
 class GitPushBranchTool:
     name = "git_push_branch"
-    description = (
-        "Push a feature branch to GitHub. "
-        "NEVER pushes to main or master — those are hard-blocked."
-    )
+    description = "Push a feature branch to GitHub. NEVER pushes to main or master — those are hard-blocked."
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -180,6 +181,7 @@ class GitPushBranchTool:
         if branch in _PROTECTED_BRANCHES:
             return f"[BLOCKED] Cannot push to protected branch '{branch}'."
         from src.workspaces.store import TrustLevel
+
         if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.AUTO_PUSH):
             return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
@@ -216,17 +218,24 @@ class CreatePRTool:
         if branch in _PROTECTED_BRANCHES:
             return f"[BLOCKED] Cannot open PR from protected branch '{branch}'."
         from src.workspaces.store import TrustLevel
+
         if err := _check_trust(kwargs.get("workspace_id"), self._ws_store, TrustLevel.PROPOSE):
             return err
         cwd = _resolve_cwd(kwargs.get("workspace_id"), self._ws_store)
         if isinstance(cwd, tuple):
             return cwd[1]
         rc, out, err = await _run(
-            _GH, "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--head", branch,
-            "--base", "main",
+            _GH,
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--head",
+            branch,
+            "--base",
+            "main",
             cwd=cwd,
         )
         return out if rc == 0 else f"gh pr create failed: {err}"

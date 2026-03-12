@@ -1,4 +1,5 @@
 """Integration test — full agent turn with mocked Anthropic client."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,18 +70,16 @@ def _mock_text_response(text: str) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_simple_text_turn(agent: Agent) -> None:
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("Hello! How can I help?")
-    )):
+    with patch.object(
+        agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("Hello! How can I help?"))
+    ):
         result = await agent.run_turn("hi")
     assert result == "Hello! How can I help?"
 
 
 @pytest.mark.asyncio
 async def test_turn_logs_to_memory(agent: Agent) -> None:
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("Done.")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("Done."))):
         await agent.run_turn("remember this")
     turns = agent._memory.get_recent_turns(agent.session_id)
     assert any(t["role"] == "user" for t in turns)
@@ -89,8 +88,6 @@ async def test_turn_logs_to_memory(agent: Agent) -> None:
 
 @pytest.mark.asyncio
 async def test_turn_records_llm_cost(agent: Agent) -> None:
-    with patch.object(agent._client.messages, "create", new=AsyncMock(
-        return_value=_mock_text_response("ok")
-    )):
+    with patch.object(agent._client.messages, "create", new=AsyncMock(return_value=_mock_text_response("ok"))):
         await agent.run_turn("test")
     assert agent._cost_guard.session_tokens > 0

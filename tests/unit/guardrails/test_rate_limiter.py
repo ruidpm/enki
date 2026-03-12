@@ -1,4 +1,5 @@
 """Tests for RateLimiterHook (H-05 / M-03)."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,7 +17,7 @@ async def test_allows_up_to_max_calls(limiter: RateLimiterHook) -> None:
     """Exactly max_per_turn calls should be allowed."""
     for i in range(10):
         allow, reason = await limiter.check("tool", {})
-        assert allow is True, f"Call {i+1} should be allowed"
+        assert allow is True, f"Call {i + 1} should be allowed"
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,5 @@
 """Persistent memory store — SQLite + FTS5 + daily markdown logs."""
+
 from __future__ import annotations
 
 import re
@@ -91,8 +92,7 @@ class MemoryStore:
         log_date = ts[:10]
         with self._conn() as conn:
             cur = conn.execute(
-                "INSERT INTO turns (session_id, role, content, timestamp, log_date) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO turns (session_id, role, content, timestamp, log_date) VALUES (?, ?, ?, ?, ?)",
                 (session_id, role, content, ts, log_date),
             )
             row_id = int(cur.lastrowid or 0)
@@ -120,9 +120,9 @@ class MemoryStore:
     @staticmethod
     def _sanitize_fts_query(query: str) -> str:
         """Strip FTS5 special characters and operators so raw user input doesn't cause syntax errors."""
-        sanitized = re.sub(r'[^\w\s]', ' ', query)
-        sanitized = re.sub(r'\b(AND|OR|NOT)\b', ' ', sanitized, flags=re.IGNORECASE)
-        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        sanitized = re.sub(r"[^\w\s]", " ", query)
+        sanitized = re.sub(r"\b(AND|OR|NOT)\b", " ", sanitized, flags=re.IGNORECASE)
+        sanitized = re.sub(r"\s+", " ", sanitized).strip()
         return sanitized
 
     def search_fts(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -146,8 +146,7 @@ class MemoryStore:
         """Return the most recent turns for a session."""
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT role, content, timestamp FROM turns "
-                "WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                "SELECT role, content, timestamp FROM turns WHERE session_id = ? ORDER BY id DESC LIMIT ?",
                 (session_id, limit),
             ).fetchall()
         return list(reversed([dict(r) for r in rows]))
@@ -165,9 +164,7 @@ class MemoryStore:
     def get_facts(self, limit: int = 50) -> list[str]:
         """Return most recent facts from SQLite."""
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT fact FROM facts ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = conn.execute("SELECT fact FROM facts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [r["fact"] for r in rows]
 
     def build_context(self, query: str, session_id: str, max_tokens: int = 2000) -> str:
@@ -195,10 +192,7 @@ class MemoryStore:
             today_str = date.today().isoformat()
             historical = [r for r in results if not r["timestamp"].startswith(today_str)]
             if historical:
-                hits = "\n".join(
-                    f"[{r['timestamp'][:10]}]: {r['content'][:200]}"
-                    for r in historical
-                )
+                hits = "\n".join(f"[{r['timestamp'][:10]}]: {r['content'][:200]}" for r in historical)
                 parts.append(f"## Relevant past context\n{hits}")
         else:
             # Legacy path: SQLite facts + FTS
@@ -208,10 +202,7 @@ class MemoryStore:
 
             results = self.search_fts(query, limit=5)
             if results:
-                hits = "\n".join(
-                    f"[{r['timestamp'][:10]} {r['role']}]: {r['content'][:200]}"
-                    for r in results
-                )
+                hits = "\n".join(f"[{r['timestamp'][:10]} {r['role']}]: {r['content'][:200]}" for r in results)
                 parts.append("## Relevant past context\n" + hits)
 
         context = "\n\n".join(parts)

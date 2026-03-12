@@ -1,4 +1,5 @@
 """Sub-agent spawning tool — runs an isolated Claude agent with restricted tools."""
+
 from __future__ import annotations
 
 import asyncio
@@ -74,9 +75,7 @@ class SpawnAgentTool:
         subset = {
             name: tool
             for name, tool in self._registry.items()
-            if name in requested_tools
-            and name != "spawn_agent"
-            and name not in REQUIRES_CONFIRM
+            if name in requested_tools and name != "spawn_agent" and name not in REQUIRES_CONFIRM
         }
 
         log.info(
@@ -87,6 +86,7 @@ class SpawnAgentTool:
         )
 
         async with self._semaphore:
+
             def _on_cost(inp: int, out: int, cost: float) -> None:
                 if self._cost_guard is not None:
                     self._cost_guard.record_llm_call(inp, out, cost)

@@ -1,4 +1,5 @@
 """Tests for TasksTool — SQL injection prevention, CRUD operations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,6 +31,7 @@ def _mock_proc(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magic
 # SQL injection prevention — status filter
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_list_rejects_invalid_status(tool: TasksTool) -> None:
     """Status must be whitelisted; SQL injection via status is blocked."""
@@ -52,6 +54,7 @@ async def test_list_accepts_valid_statuses(tool: TasksTool) -> None:
 # ---------------------------------------------------------------------------
 # SQL injection prevention — create
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_create_escapes_single_quotes_in_title(tool: TasksTool) -> None:
@@ -111,12 +114,11 @@ async def test_create_injection_in_due_date(tool: TasksTool) -> None:
 # SQL injection prevention — update
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_update_rejects_invalid_status(tool: TasksTool) -> None:
     """Status in update must be whitelisted."""
-    result = await tool.execute(
-        action="update", id=1, status="done'; DROP TABLE tasks;--"
-    )
+    result = await tool.execute(action="update", id=1, status="done'; DROP TABLE tasks;--")
     assert "invalid" in result.lower() or "error" in result.lower()
 
 
@@ -148,7 +150,9 @@ async def test_update_escapes_title_and_notes(tool: TasksTool) -> None:
 async def test_update_validates_task_id_is_integer(tool: TasksTool) -> None:
     """task_id must be an integer, not injectable SQL."""
     result = await tool.execute(
-        action="update", id="1; DROP TABLE tasks;--", status="done"  # type: ignore[arg-type]
+        action="update",
+        id="1; DROP TABLE tasks;--",
+        status="done",  # type: ignore[arg-type]
     )
     assert "invalid" in result.lower() or "error" in result.lower()
 
@@ -156,6 +160,7 @@ async def test_update_validates_task_id_is_integer(tool: TasksTool) -> None:
 # ---------------------------------------------------------------------------
 # SQL injection prevention — delete
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_delete_validates_task_id_is_integer(tool: TasksTool) -> None:
@@ -167,6 +172,7 @@ async def test_delete_validates_task_id_is_integer(tool: TasksTool) -> None:
 # ---------------------------------------------------------------------------
 # CRUD operations (basic correctness)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_list_returns_json(tool: TasksTool) -> None:
@@ -214,6 +220,7 @@ async def test_unknown_action(tool: TasksTool) -> None:
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_update_due_date_validates_format(tool: TasksTool) -> None:

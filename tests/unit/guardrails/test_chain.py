@@ -1,4 +1,5 @@
 """Integration test — full GuardrailChain."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -18,11 +19,13 @@ def chain() -> GuardrailChain:
     registry: dict[str, Any] = {"web_search": object(), "tasks": object()}
     loop = LoopDetectorHook(threshold=3)
     loop.set_session("s1")
-    return GuardrailChain([
-        AllowlistHook(registry),
-        RateLimiterHook(max_per_turn=3),
-        loop,
-    ])
+    return GuardrailChain(
+        [
+            AllowlistHook(registry),
+            RateLimiterHook(max_per_turn=3),
+            loop,
+        ]
+    )
 
 
 @pytest.mark.asyncio
@@ -60,6 +63,7 @@ async def test_chain_stops_at_first_block(chain: GuardrailChain) -> None:
 # Confirmation gate — manage_workspace must be confirmed
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_manage_workspace_triggers_confirmation_gate_denied() -> None:
     """manage_workspace is in REQUIRES_CONFIRM — denied confirmation blocks execution."""
@@ -67,10 +71,12 @@ async def test_manage_workspace_triggers_confirmation_gate_denied() -> None:
     notifier.ask_confirm = AsyncMock(return_value=False)
 
     registry: dict[str, Any] = {"manage_workspace": object()}
-    chain = GuardrailChain([
-        AllowlistHook(registry),
-        ConfirmationGateHook(notifier),
-    ])
+    chain = GuardrailChain(
+        [
+            AllowlistHook(registry),
+            ConfirmationGateHook(notifier),
+        ]
+    )
 
     allow, reason = await chain.run("manage_workspace", {"action": "set_trust", "workspace_id": "ws1", "trust_level": 4})
     assert allow is False
@@ -85,10 +91,12 @@ async def test_manage_workspace_triggers_confirmation_gate_approved() -> None:
     notifier.ask_confirm = AsyncMock(return_value=True)
 
     registry: dict[str, Any] = {"manage_workspace": object()}
-    chain = GuardrailChain([
-        AllowlistHook(registry),
-        ConfirmationGateHook(notifier),
-    ])
+    chain = GuardrailChain(
+        [
+            AllowlistHook(registry),
+            ConfirmationGateHook(notifier),
+        ]
+    )
 
     allow, reason = await chain.run("manage_workspace", {"action": "clone", "workspace_id": "ws1"})
     assert allow is True
@@ -103,10 +111,12 @@ async def test_read_only_tools_skip_confirmation_gate() -> None:
     notifier.ask_confirm = AsyncMock(return_value=True)
 
     registry: dict[str, Any] = {"git_status": object()}
-    chain = GuardrailChain([
-        AllowlistHook(registry),
-        ConfirmationGateHook(notifier),
-    ])
+    chain = GuardrailChain(
+        [
+            AllowlistHook(registry),
+            ConfirmationGateHook(notifier),
+        ]
+    )
 
     allow, reason = await chain.run("git_status", {})
     assert allow is True

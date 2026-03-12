@@ -1,4 +1,5 @@
 """Tests for ManageTeamTool — create/update/deactivate with confirmation gate."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +23,7 @@ def tool(store: TeamsStore) -> ManageTeamTool:
 # ---------------------------------------------------------------------------
 # create
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_create_team(tool: ManageTeamTool, store: TeamsStore) -> None:
@@ -60,6 +62,7 @@ async def test_create_duplicate_team_overwrites(tool: ManageTeamTool, store: Tea
 # update
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_update_team(tool: ManageTeamTool, store: TeamsStore) -> None:
     store.create_team("eng", "Engineering", "old role", ["notes"])
@@ -97,6 +100,7 @@ async def test_update_partial_fields(tool: ManageTeamTool, store: TeamsStore) ->
 # deactivate
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_deactivate_team(tool: ManageTeamTool, store: TeamsStore) -> None:
     store.create_team("fired", "Fired Team", "role", [])
@@ -115,6 +119,7 @@ async def test_deactivate_unknown_team_returns_error(tool: ManageTeamTool) -> No
 # ---------------------------------------------------------------------------
 # unknown action
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_unknown_action_returns_error(tool: ManageTeamTool) -> None:

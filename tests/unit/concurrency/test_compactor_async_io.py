@@ -1,4 +1,5 @@
 """Tests for M-11: Memory compactor must use asyncio.to_thread for blocking file I/O."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,9 +32,7 @@ def _make_client(response_text: str) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_compact_session_uses_to_thread_for_file_write(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_compact_session_uses_to_thread_for_file_write(store: MemoryStore, facts_path: Path) -> None:
     """File write in compact_session must go through asyncio.to_thread."""
     client = _make_client("User prefers concise responses")
     compactor = MemoryCompactor(store=store, anthropic_client=client, facts_path=facts_path)
@@ -43,6 +42,7 @@ async def test_compact_session_uses_to_thread_for_file_write(
         # Make to_thread actually execute the callable so the test completes
         async def _run_sync(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
             return fn(*args, **kwargs)
+
         mock_to_thread.side_effect = _run_sync
 
         facts = await compactor.compact_session("sess1")
@@ -52,9 +52,7 @@ async def test_compact_session_uses_to_thread_for_file_write(
 
 
 @pytest.mark.asyncio
-async def test_clean_facts_uses_to_thread_for_file_write(
-    store: MemoryStore, facts_path: Path
-) -> None:
+async def test_clean_facts_uses_to_thread_for_file_write(store: MemoryStore, facts_path: Path) -> None:
     """File write in clean_facts must go through asyncio.to_thread."""
     # Write enough facts to trigger cleanup
     facts_path.write_text("\n".join(f"- Fact {i}" for i in range(35)))
@@ -63,8 +61,10 @@ async def test_clean_facts_uses_to_thread_for_file_write(
     compactor = MemoryCompactor(store=store, anthropic_client=client, facts_path=facts_path)
 
     with patch("src.memory.compactor.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+
         async def _run_sync(fn, *args, **kwargs):  # type: ignore[no-untyped-def]
             return fn(*args, **kwargs)
+
         mock_to_thread.side_effect = _run_sync
 
         result = await compactor.clean_facts()

@@ -1,4 +1,5 @@
 """Dynamic tool discovery — loads Tool classes from .py files in a directory."""
+
 from __future__ import annotations
 
 import importlib
@@ -16,11 +17,21 @@ log = structlog.get_logger()
 _TOOL_ATTRS = ("name", "description", "input_schema", "execute")
 
 # Core files that require DI args at construction — skip auto-instantiation
-_SKIP_FILES = frozenset({
-    "tasks", "web_search", "notes", "calendar_read",
-    "email_read", "evolve", "restart", "loader",
-    "github_tools", "claude_code", "spawn_agent",
-})
+_SKIP_FILES = frozenset(
+    {
+        "tasks",
+        "web_search",
+        "notes",
+        "calendar_read",
+        "email_read",
+        "evolve",
+        "restart",
+        "loader",
+        "github_tools",
+        "claude_code",
+        "spawn_agent",
+    }
+)
 
 
 def _is_tool_class(obj: Any) -> bool:

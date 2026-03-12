@@ -1,4 +1,5 @@
 """Tests for TelegramBot — handlers, notifier protocols, confirmation flow."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +13,7 @@ from src.interfaces.telegram_bot import TelegramBot
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_app() -> MagicMock:
@@ -57,6 +59,7 @@ def _make_update(chat_id: int = 12345, text: str = "hi", chat_type: str = "priva
 # Authorization
 # ---------------------------------------------------------------------------
 
+
 def test_authorized_correct_chat(bot: TelegramBot) -> None:
     update = _make_update(chat_id=12345)
     assert bot._authorized(update) is True
@@ -70,6 +73,7 @@ def test_authorized_wrong_chat(bot: TelegramBot) -> None:
 # ---------------------------------------------------------------------------
 # /start command
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cmd_start_authorized(bot: TelegramBot) -> None:
@@ -90,6 +94,7 @@ async def test_cmd_start_unauthorized(bot: TelegramBot) -> None:
 # /cost command
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_cmd_cost(bot: TelegramBot, agent: MagicMock) -> None:
     bot.set_agent(agent)
@@ -103,6 +108,7 @@ async def test_cmd_cost(bot: TelegramBot, agent: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 # Message handler
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_on_message_calls_agent(bot: TelegramBot, agent: MagicMock) -> None:
@@ -134,6 +140,7 @@ async def test_on_message_error_sends_error_reply(bot: TelegramBot, agent: Magic
 # ---------------------------------------------------------------------------
 # Callback query handler
 # ---------------------------------------------------------------------------
+
 
 def _make_callback_update(data: str, chat_id: int = 12345) -> MagicMock:
     update = MagicMock()
@@ -195,6 +202,7 @@ async def test_callback_unauthorized_does_not_resolve(bot: TelegramBot) -> None:
 # ---------------------------------------------------------------------------
 # Notifier protocol methods
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_send_sends_message(bot: TelegramBot) -> None:
@@ -307,11 +315,13 @@ async def test_ask_double_confirm_first_no_skips_second(bot: TelegramBot) -> Non
 # M-04: Secure temp file creation
 # ---------------------------------------------------------------------------
 
+
 def test_voice_handler_uses_tempfile_mkstemp() -> None:
     """Verify the module uses tempfile for secure temp files, not f-string paths."""
     import inspect
 
     import src.interfaces.telegram_bot as mod
+
     source = inspect.getsource(mod.TelegramBot._on_voice)
     # Must use tempfile.mkstemp, not f-string /tmp/ paths
     assert "mkstemp" in source or "NamedTemporaryFile" in source
@@ -323,6 +333,7 @@ def test_photo_handler_uses_tempfile_mkstemp() -> None:
     import inspect
 
     import src.interfaces.telegram_bot as mod
+
     source = inspect.getsource(mod.TelegramBot._on_photo)
     assert "mkstemp" in source or "NamedTemporaryFile" in source
     assert 'f"/tmp/' not in source

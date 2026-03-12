@@ -1,4 +1,5 @@
 """Tests for SpawnTeamTool — fire-and-forget background delegation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -57,6 +58,7 @@ def tool(store: TeamsStore, config: MagicMock, tool_registry: dict, notifier: As
 # Gate checks (synchronous, before background task fires)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_unknown_team_returns_error(tool: SpawnTeamTool) -> None:
     result = await tool.execute(team_id="nonexistent", task="do something")
@@ -81,6 +83,7 @@ async def test_budget_exceeded_returns_blocked(tool: SpawnTeamTool, store: Teams
 # Non-blocking: execute() must return immediately
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_execute_returns_immediately_with_job_id(tool: SpawnTeamTool) -> None:
     with patch.object(tool, "_run_background", new=AsyncMock()):
@@ -92,6 +95,7 @@ async def test_execute_returns_immediately_with_job_id(tool: SpawnTeamTool) -> N
 # ---------------------------------------------------------------------------
 # Background: _run_background sends notification on success
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_background_notifies_on_success(tool: SpawnTeamTool, store: TeamsStore, notifier: AsyncMock) -> None:
@@ -151,6 +155,7 @@ async def test_background_notifies_on_failure(tool: SpawnTeamTool, store: TeamsS
 # Tool subset safety
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_spawn_team_excluded_from_tool_subset(store: TeamsStore, config: MagicMock) -> None:
     spawn_team_mock = MagicMock()
@@ -179,10 +184,7 @@ async def test_spawn_team_excluded_from_tool_subset(store: TeamsStore, config: M
     with patch("src.tools.spawn_team.SubAgentRunner", side_effect=capture_runner):
         team = store.get_team("safe_team")
         assert team is not None
-        await t._run_background("x", "safe_team", team, {
-            k: v for k, v in registry.items()
-            if k in {"web_search"}
-        }, "task")
+        await t._run_background("x", "safe_team", team, {k: v for k, v in registry.items() if k in {"web_search"}}, "task")
 
     assert "spawn_team" not in captured_tools
     assert "spawn_agent" not in captured_tools
@@ -192,10 +194,9 @@ async def test_spawn_team_excluded_from_tool_subset(store: TeamsStore, config: M
 # Cancellation via JobRegistry
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
-async def test_cancel_kills_background_task(
-    store: TeamsStore, config: MagicMock, notifier: AsyncMock
-) -> None:
+async def test_cancel_kills_background_task(store: TeamsStore, config: MagicMock, notifier: AsyncMock) -> None:
     """Task stored in JobRegistry can be cancelled; CancelledError is handled cleanly."""
     from src.jobs import JobRegistry
 
@@ -235,9 +236,7 @@ async def test_cancel_kills_background_task(
 
 
 @pytest.mark.asyncio
-async def test_job_registry_tracks_team_job(
-    store: TeamsStore, config: MagicMock, notifier: AsyncMock
-) -> None:
+async def test_job_registry_tracks_team_job(store: TeamsStore, config: MagicMock, notifier: AsyncMock) -> None:
     """spawn_team registers job in JobRegistry and marks it done on completion."""
     from src.jobs import JobRegistry
 

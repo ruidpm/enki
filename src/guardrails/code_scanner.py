@@ -1,4 +1,5 @@
 """Static code scanner for proposed tools — AST-based, blocks dangerous patterns."""
+
 from __future__ import annotations
 
 import ast
@@ -6,29 +7,59 @@ import re
 from dataclasses import dataclass
 
 # CLI binaries that are explicitly permitted in tool code
-ALLOWED_SUBPROCESS_BINARIES: frozenset[str] = frozenset({
-    "sqlite3", "curl", "gh", "gcalcli", "jq",
-})
+ALLOWED_SUBPROCESS_BINARIES: frozenset[str] = frozenset(
+    {
+        "sqlite3",
+        "curl",
+        "gh",
+        "gcalcli",
+        "jq",
+    }
+)
 
 # Modules that are never allowed in proposed tool code
-BLOCKED_MODULES: frozenset[str] = frozenset({
-    "subprocess", "os", "sys", "shutil", "pty", "ctypes",
-    "socket", "multiprocessing", "threading", "signal",
-    "importlib", "pkgutil", "zipimport",
-})
+BLOCKED_MODULES: frozenset[str] = frozenset(
+    {
+        "subprocess",
+        "os",
+        "sys",
+        "shutil",
+        "pty",
+        "ctypes",
+        "socket",
+        "multiprocessing",
+        "threading",
+        "signal",
+        "importlib",
+        "pkgutil",
+        "zipimport",
+    }
+)
 
 # Dangerous builtins / names
-BLOCKED_NAMES: frozenset[str] = frozenset({
-    "eval", "exec", "compile", "__import__", "__builtins__",
-    "open",  # file writes — tools use CLI for this
-    "getattr", "setattr", "delattr",  # dynamic attribute manipulation
-    "globals", "locals", "vars",
-})
+BLOCKED_NAMES: frozenset[str] = frozenset(
+    {
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "__builtins__",
+        "open",  # file writes — tools use CLI for this
+        "getattr",
+        "setattr",
+        "delattr",  # dynamic attribute manipulation
+        "globals",
+        "locals",
+        "vars",
+    }
+)
 
 # Modules allowed for network access in tool code
-ALLOWED_NETWORK_MODULES: frozenset[str] = frozenset({
-    "aiohttp",  # only for tools that need HTTP (must still pass scope_check at runtime)
-})
+ALLOWED_NETWORK_MODULES: frozenset[str] = frozenset(
+    {
+        "aiohttp",  # only for tools that need HTTP (must still pass scope_check at runtime)
+    }
+)
 
 _DANGEROUS_PATTERNS = re.compile(
     r"__import__|__builtins__|base64\.b64decode.*exec|compile\(.*exec",
@@ -44,15 +75,20 @@ class ScanResult:
 
 # Exact paths (with src/ prefix) that are allowed to use subprocess.
 # Only the real tool files get the exception — proposed tools never do.
-_SUBPROCESS_ALLOWED_PATHS: frozenset[str] = frozenset({
-    "src/tools/restart.py",
-    "src/tools/claude_code.py",
-})
+_SUBPROCESS_ALLOWED_PATHS: frozenset[str] = frozenset(
+    {
+        "src/tools/restart.py",
+        "src/tools/claude_code.py",
+    }
+)
 
 # Protected basenames that must not be used by proposed tools
-PROTECTED_TOOL_NAMES: frozenset[str] = frozenset({
-    "restart", "claude_code",
-})
+PROTECTED_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "restart",
+        "claude_code",
+    }
+)
 
 
 def _is_subprocess_allowed(filename: str) -> bool:
@@ -79,10 +115,7 @@ class CodeScanner:
         if stem in PROTECTED_TOOL_NAMES and not _is_subprocess_allowed(filename):
             return ScanResult(
                 blocked=True,
-                reason=(
-                    f"Tool name '{stem}' collides with a protected system tool. "
-                    f"Choose a different name."
-                ),
+                reason=(f"Tool name '{stem}' collides with a protected system tool. Choose a different name."),
             )
 
         # Regex pre-check for obfuscated patterns

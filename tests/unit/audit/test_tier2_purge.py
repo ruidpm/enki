@@ -1,4 +1,5 @@
 """Tests for Tier2 purge scheduling — M-07."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,6 +48,4 @@ def test_purge_called_at_startup() -> None:
 
     main_path = Path(__file__).resolve().parents[3] / "main.py"
     source = main_path.read_text()
-    assert "purge_old_tier2" in source, (
-        "main.py must call audit.purge_old_tier2() at startup"
-    )
+    assert "purge_old_tier2" in source, "main.py must call audit.purge_old_tier2() at startup"

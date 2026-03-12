@@ -1,4 +1,5 @@
 """Tests for MemoryStore."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -84,11 +85,13 @@ def test_get_recent_turns_isolated_by_session(store: MemoryStore) -> None:
 # Daily log tests
 # ---------------------------------------------------------------------------
 
+
 def test_append_turn_writes_daily_log(tmp_path: Path) -> None:
     logs_dir = tmp_path / "logs"
     s = MemoryStore(tmp_path / "mem.db", logs_dir=logs_dir)
     s.append_turn("sess1", "user", "hello from daily log")
     from datetime import date
+
     log_file = logs_dir / f"{date.today().isoformat()}.md"
     assert log_file.exists()
     content = log_file.read_text()
@@ -131,6 +134,7 @@ def test_get_today_log_tail_no_file_yet(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # build_context with facts_path
 # ---------------------------------------------------------------------------
+
 
 def test_build_context_reads_facts_md(tmp_path: Path) -> None:
     facts_path = tmp_path / "facts.md"

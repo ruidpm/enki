@@ -1,4 +1,5 @@
 """Proactive scheduler — APScheduler cron jobs for briefings and alerts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,8 +27,8 @@ class SchedulerNotifier(Protocol):
 @dataclass
 class ScheduledJob:
     job_id: str
-    cron: str          # standard 5-field cron: "0 8 * * *"
-    prompt: str        # what to ask the agent
+    cron: str  # standard 5-field cron: "0 8 * * *"
+    prompt: str  # what to ask the agent
     enabled: bool = True
 
 
@@ -70,8 +71,11 @@ class Scheduler:
             self._scheduler.add_job(
                 self._run_job,
                 trigger=CronTrigger(
-                    minute=minute, hour=hour,
-                    day=dom, month=month, day_of_week=dow,
+                    minute=minute,
+                    hour=hour,
+                    day=dom,
+                    month=month,
+                    day_of_week=dow,
                 ),
                 args=[job],
                 id=job.job_id,
@@ -112,9 +116,7 @@ class Scheduler:
         except Exception as exc:
             log.error("job_error", job_id=job.job_id, error=str(exc))
             try:
-                await self._notifier.send(
-                    f"Job `{job.job_id}` failed: {exc}"
-                )
+                await self._notifier.send(f"Job `{job.job_id}` failed: {exc}")
             except Exception as notify_exc:
                 log.warning(
                     "job_notify_fallback_failed",
@@ -144,10 +146,7 @@ def default_jobs() -> list[ScheduledJob]:
         ScheduledJob(
             job_id="deadline_check",
             cron="0 17 * * *",
-            prompt=(
-                "Check for any tasks due in the next 48 hours and remind me "
-                "of upcoming deadlines."
-            ),
+            prompt=("Check for any tasks due in the next 48 hours and remind me of upcoming deadlines."),
         ),
         ScheduledJob(
             job_id="eod_team_report",

@@ -4,6 +4,7 @@ Moves the tool's .py file to tools_disabled/ and unregisters it from the
 registry. The file is preserved so it can be re-enabled by moving it back.
 IMMUTABLE_CORE tools cannot be removed.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -60,10 +61,7 @@ class RemoveToolTool:
 
         src = self._tools_dir / f"{tool_name}.py"
         if not src.exists():
-            return (
-                f"[ERROR] Tool '{tool_name}' is registered but no file found at {src}. "
-                "Cannot disable built-in tools this way."
-            )
+            return f"[ERROR] Tool '{tool_name}' is registered but no file found at {src}. Cannot disable built-in tools this way."
 
         self._disabled_dir.mkdir(parents=True, exist_ok=True)
         dest = self._disabled_dir / f"{tool_name}.py"

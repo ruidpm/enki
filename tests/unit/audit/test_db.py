@@ -1,4 +1,5 @@
 """Tests for AuditDB."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -63,9 +64,9 @@ async def test_log_tool_call_allowed_goes_to_tier2(db: AuditDB) -> None:
 
 @pytest.mark.asyncio
 async def test_cost_query(db: AuditDB) -> None:
-    await db.log_tier2(Tier2Event.LLM_CALL, "s1", {
-        "model": "claude-sonnet-4-6", "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.001
-    })
+    await db.log_tier2(
+        Tier2Event.LLM_CALL, "s1", {"model": "claude-sonnet-4-6", "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.001}
+    )
     q = AuditQuery(db)
     costs = q.get_costs()
     assert costs["total_input_tokens"] == 100

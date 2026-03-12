@@ -1,4 +1,5 @@
 """Cost guard — token budgets, dollar caps, autonomous turn limits."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -31,9 +32,7 @@ class CostGuardHook:
         self._daily_cost_usd = 0.0
         self._monthly_cost_usd = 0.0
 
-    def record_llm_call(
-        self, input_tokens: int, output_tokens: int, cost_usd: float
-    ) -> None:
+    def record_llm_call(self, input_tokens: int, output_tokens: int, cost_usd: float) -> None:
         self._session_tokens += input_tokens + output_tokens
         self._session_llm_calls += 1
         self._daily_cost_usd += cost_usd
@@ -71,33 +70,17 @@ class CostGuardHook:
         self._session_llm_calls = 0
         self._autonomous_turns = 0
 
-    async def check(
-        self, tool_name: str, params: dict[str, Any]
-    ) -> tuple[bool, str | None]:
+    async def check(self, tool_name: str, params: dict[str, Any]) -> tuple[bool, str | None]:
         if self._session_tokens >= self._max_tokens:
-            return False, (
-                f"Session token budget exhausted "
-                f"({self._session_tokens}/{self._max_tokens})"
-            )
+            return False, (f"Session token budget exhausted ({self._session_tokens}/{self._max_tokens})")
         if self._session_llm_calls >= self._max_llm_calls:
-            return False, (
-                f"Session LLM call limit reached "
-                f"({self._session_llm_calls}/{self._max_llm_calls})"
-            )
+            return False, (f"Session LLM call limit reached ({self._session_llm_calls}/{self._max_llm_calls})")
         if self._daily_cost_usd >= self._max_daily:
-            return False, (
-                f"Daily cost limit reached "
-                f"(${self._daily_cost_usd:.2f} / ${self._max_daily:.2f})"
-            )
+            return False, (f"Daily cost limit reached (${self._daily_cost_usd:.2f} / ${self._max_daily:.2f})")
         if self._monthly_cost_usd >= self._max_monthly:
-            return False, (
-                f"Monthly cost limit reached "
-                f"(${self._monthly_cost_usd:.2f} / ${self._max_monthly:.2f})"
-            )
+            return False, (f"Monthly cost limit reached (${self._monthly_cost_usd:.2f} / ${self._max_monthly:.2f})")
         if self._autonomous_turns >= self._max_autonomous_turns:
             return False, (
-                f"Autonomous turn limit reached "
-                f"({self._autonomous_turns}/{self._max_autonomous_turns}) "
-                "— waiting for user input"
+                f"Autonomous turn limit reached ({self._autonomous_turns}/{self._max_autonomous_turns}) — waiting for user input"
             )
         return True, None

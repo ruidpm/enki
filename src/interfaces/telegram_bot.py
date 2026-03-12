@@ -1,4 +1,5 @@
 """Telegram bot interface — python-telegram-bot async."""
+
 from __future__ import annotations
 
 import asyncio
@@ -53,24 +54,14 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("audit", self._cmd_audit))
         self._app.add_handler(CommandHandler("newsession", self._cmd_newsession))
         self._app.add_handler(CallbackQueryHandler(self._on_callback))
-        self._app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message, block=False)
-        )
-        self._app.add_handler(
-            MessageHandler(filters.VOICE, self._on_voice, block=False)
-        )
-        self._app.add_handler(
-            MessageHandler(filters.PHOTO, self._on_photo, block=False)
-        )
+        self._app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message, block=False))
+        self._app.add_handler(MessageHandler(filters.VOICE, self._on_voice, block=False))
+        self._app.add_handler(MessageHandler(filters.PHOTO, self._on_photo, block=False))
         self._app.add_error_handler(self._on_error)
 
     def _authorized(self, update: Update) -> bool:
         chat = update.effective_chat
-        return (
-            chat is not None
-            and chat.type == "private"
-            and chat.id == self._allowed_chat_id
-        )
+        return chat is not None and chat.type == "private" and chat.id == self._allowed_chat_id
 
     def _authorized_chat(self, chat_id: int) -> bool:
         return chat_id == self._allowed_chat_id
@@ -107,6 +98,7 @@ class TelegramBot:
             return
         assert self._agent is not None
         from src.audit.query import AuditQuery
+
         q = AuditQuery(self._agent._audit)
         events = q.get_security_events()
         if not events:
@@ -116,9 +108,7 @@ class TelegramBot:
         lines = [f"[{e['timestamp'][:16]}] {e['event_type']}" for e in recent]
         await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
 
-    async def _run_turn_with_typing(
-        self, update: Update, content: str | list[dict[str, Any]]
-    ) -> None:
+    async def _run_turn_with_typing(self, update: Update, content: str | list[dict[str, Any]]) -> None:
         """Run a turn with persistent typing indicator. update.message must be set."""
         if self._turn_lock.locked():
             await update.message.reply_text("Still processing your last request...")  # type: ignore[union-attr]
@@ -174,11 +164,10 @@ class TelegramBot:
             # Lazy-load local Whisper model on first voice message (tiny = 39MB, ~200ms on CPU)
             if self._whisper_model is None:
                 import whisper  # type: ignore[import-untyped]
+
                 self._whisper_model = await asyncio.to_thread(whisper.load_model, "tiny")
 
-            result: dict[str, Any] = await asyncio.to_thread(
-                self._whisper_model.transcribe, tmp_path
-            )
+            result: dict[str, Any] = await asyncio.to_thread(self._whisper_model.transcribe, tmp_path)
             transcript = result["text"].strip()
             if not transcript:
                 await update.message.reply_text("Couldn't transcribe — empty audio?")
@@ -265,14 +254,14 @@ class TelegramBot:
     async def _ask(self, text: str, key: str) -> bool:
         """Send inline Yes/No keyboard and wait for user response."""
         keyboard = InlineKeyboardMarkup(
-            [[
-                InlineKeyboardButton("Yes", callback_data=f"confirm:{key}:yes"),
-                InlineKeyboardButton("No", callback_data=f"confirm:{key}:no"),
-            ]]
+            [
+                [
+                    InlineKeyboardButton("Yes", callback_data=f"confirm:{key}:yes"),
+                    InlineKeyboardButton("No", callback_data=f"confirm:{key}:no"),
+                ]
+            ]
         )
-        await self._app.bot.send_message(
-            self._allowed_chat_id, text, reply_markup=keyboard
-        )
+        await self._app.bot.send_message(self._allowed_chat_id, text, reply_markup=keyboard)
         loop = asyncio.get_event_loop()
         fut: asyncio.Future[bool] = loop.create_future()
         self._pending[key] = fut
@@ -298,9 +287,7 @@ class TelegramBot:
     # EvolveNotifier protocol
     # ------------------------------------------------------------------
 
-    async def send_diff(
-        self, tool_name: str, description: str, code: str, code_hash: str
-    ) -> None:
+    async def send_diff(self, tool_name: str, description: str, code: str, code_hash: str) -> None:
         text = (
             f"New tool proposed: {tool_name}\n"
             f"Description: {description}\n"
@@ -348,6 +335,7 @@ class TelegramBot:
 
     async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         import httpx
+
         if isinstance(context.error, Conflict):
             log.warning("telegram_conflict", detail=str(context.error))
             return
