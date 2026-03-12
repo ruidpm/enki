@@ -84,6 +84,9 @@ def load_tools_from_dir(directory: Path) -> list[str]:
         for _attr_name, obj in inspect.getmembers(module):
             if not _is_tool_class(obj):
                 continue
+            # Skip classes imported from other modules (e.g. PipelineCCCTool in run_pipeline)
+            if getattr(obj, "__module__", None) != module_name:
+                continue
             tool_name: str = obj.name
             if tool_name in registry:
                 continue  # already registered

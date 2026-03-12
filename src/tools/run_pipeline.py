@@ -364,15 +364,13 @@ class RunPipelineTool:
         gate_note: str = "",
         gist_url: str | None = None,
     ) -> None:
-        """Send stage output to notifier. Long output → summary + gist link."""
-        prefix = f"[Pipeline {pipeline_id}] {stage.upper()} complete.{gate_note}"
-        if gist_url and len(result) > self._output._gist_threshold:
-            # We already have a gist — just summarize and link
-            summary = await self._output._summarize(result, f" Stage: {stage.upper()}.")
-            summary = summary or result[:400]
-            await self._notifier.send(f"{prefix}\n{summary}\n\nFull report: {gist_url}")
+        """Send stage output to notifier. Title + gist link only (full report in gist)."""
+        title = f"[Pipeline {pipeline_id}] {stage.upper()} complete.{gate_note}"
+        if gist_url:
+            await self._notifier.send(f"{title}\nFull report: {gist_url}")
         else:
-            await self._notifier.send(f"{prefix}\n{result[:800]}")
+            # No gist — fall back to truncated output
+            await self._notifier.send(f"{title}\n{result[:800]}")
 
     async def _wait_if_paused(self, pipeline_id: str, stage: str) -> None:
         """Block until pipeline status is no longer PAUSED."""
@@ -883,7 +881,14 @@ def _build_stage_prompt(
         if PipelineStage.IMPLEMENT in artifacts:
             parts.append(f"## Implementation summary\n{artifacts[PipelineStage.IMPLEMENT][:800]}")
         parts.append(
-            "Run tests and report results. Use run_code_task to execute the test suite.\n\n"
+            "Your job is to verify the implementation works. Follow these rules strictly:\n"
+            "1. First check what testing infrastructure exists (package.json, test files, pytest, etc.)\n"
+            "2. If tests exist, RUN them and report results. Do NOT modify test files.\n"
+            "3. If NO test infrastructure exists, do a quick smoke test (e.g. syntax check, import check, "
+            "or open the main file) — then report what you found.\n"
+            "4. Do NOT create test frameworks, install testing libraries, or restructure code for testability.\n"
+            "5. Do NOT modify production code. You are QA, not a developer.\n"
+            "6. Finish in 3 steps or fewer.\n\n"
             "Structure your output with these exact sections:\n"
             "## Test Results\n"
             "## Coverage\n"

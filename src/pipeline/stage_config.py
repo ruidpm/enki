@@ -41,7 +41,7 @@ STAGE_CONFIGS: dict[str, StageConfig] = {
     "test": StageConfig(
         mode="agentic",
         model_tier="haiku",
-        max_steps=8,
+        max_steps=4,
         tools_allowed=True,
     ),
     "review": StageConfig(
