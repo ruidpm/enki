@@ -122,7 +122,6 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         GitPushBranchTool,
         GitStatusTool,
     )
-    from src.tools.health_check import HealthCheckTool
     from src.tools.job_status import JobStatusTool
     from src.tools.loader import load_tools_from_dir
     from src.tools.manage_pipeline import ManagePipelineTool
@@ -230,7 +229,6 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     # Job registry — in-memory, tracks live background tasks (CCC, pipelines, teams)
     job_registry = JobRegistry()
     register(JobStatusTool(registry=job_registry))
-    register(HealthCheckTool(data_dir=data_dir, api_key=config.anthropic_api_key))
 
     teams_db_path = data_dir / "teams.db"
     teams_store = TeamsStore(teams_db_path)
