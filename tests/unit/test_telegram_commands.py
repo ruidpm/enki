@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -124,12 +125,14 @@ class TestMemoryCommand:
         assert "TDD" in text
 
     @pytest.mark.asyncio
-    async def test_memory_no_query_shows_facts(self) -> None:
+    async def test_memory_no_query_shows_facts_from_file(self, tmp_path: Path) -> None:
         from src.interfaces.telegram_bot import TelegramBot
 
         bot = TelegramBot(token="t", allowed_chat_id="123")
         agent = MagicMock()
-        agent.memory.get_facts.return_value = ["fact 1", "fact 2"]
+        facts_file = tmp_path / "facts.md"
+        facts_file.write_text("- fact 1\n- fact 2\n")
+        agent.memory._facts_path = facts_file
         bot.set_agent(agent)
 
         update = MagicMock()
@@ -142,6 +145,28 @@ class TestMemoryCommand:
 
         text = update.message.reply_text.call_args[0][0]
         assert "fact 1" in text
+        assert "fact 2" in text
+
+    @pytest.mark.asyncio
+    async def test_memory_no_query_falls_back_to_sqlite(self) -> None:
+        from src.interfaces.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="t", allowed_chat_id="123")
+        agent = MagicMock()
+        agent.memory._facts_path = None
+        agent.memory.get_facts.return_value = ["sqlite fact"]
+        bot.set_agent(agent)
+
+        update = MagicMock()
+        update.effective_chat.type = "private"
+        update.effective_chat.id = 123
+        update.message.text = "/memory"
+        update.message.reply_text = AsyncMock()
+
+        await bot._cmd_memory(update, MagicMock())
+
+        text = update.message.reply_text.call_args[0][0]
+        assert "sqlite fact" in text
 
     @pytest.mark.asyncio
     async def test_memory_no_results(self) -> None:

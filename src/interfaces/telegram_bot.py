@@ -152,10 +152,16 @@ class TelegramBot:
         if not running:
             await update.message.reply_text("All idle — no running jobs.")  # type: ignore[union-attr]
             return
-        lines = [f"{len(running)} running job(s):"]
+        lines = [f"{len(running)} running job(s):\n"]
         for j in running:
             elapsed = int(j.get("elapsed_s", 0))
-            lines.append(f"- [{j['job_id']}] {j['type']}: {j['description']} ({elapsed}s)")
+            mins, secs = divmod(elapsed, 60)
+            time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+            stage = f" [{j['stage']}]" if j.get("stage") else ""
+            tokens = j.get("tokens_total", 0)
+            cost = j.get("cost_usd", 0.0)
+            cost_str = f"\n  {tokens:,} tok ~${cost:.4f}" if tokens > 0 else ""
+            lines.append(f"- [{j['job_id']}] {j['type']}{stage} {time_str}{cost_str}\n  {j['description'][:80]}")
         await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
 
     async def _cmd_memory(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,12 +182,22 @@ class TelegramBot:
                 lines.append(f"- [{r.get('role', '?')}] {content}")
             await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
         else:
-            facts = self._agent.memory.get_facts(limit=10)
-            if not facts:
-                await update.message.reply_text("No facts stored yet.")  # type: ignore[union-attr]
-                return
-            lines = ["Recent facts:"] + [f"- {f}" for f in facts]
-            await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+            # Read from facts.md (current source of truth), fall back to SQLite
+            facts_text = ""
+            if self._agent.memory._facts_path and self._agent.memory._facts_path.exists():
+                facts_text = self._agent.memory._facts_path.read_text().strip()
+            if facts_text:
+                # Truncate for Telegram message limit
+                if len(facts_text) > 3500:
+                    facts_text = facts_text[:3500] + "\n...[truncated]"
+                await update.message.reply_text(f"Known facts:\n{facts_text}")  # type: ignore[union-attr]
+            else:
+                facts = self._agent.memory.get_facts(limit=10)
+                if not facts:
+                    await update.message.reply_text("No facts stored yet.")  # type: ignore[union-attr]
+                    return
+                lines = ["Recent facts:"] + [f"- {f}" for f in facts]
+                await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
 
     async def _run_turn_with_typing(self, update: Update, content: str | list[dict[str, Any]]) -> None:
         """Run a turn with persistent typing indicator. update.message must be set."""

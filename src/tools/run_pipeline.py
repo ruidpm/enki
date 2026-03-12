@@ -314,10 +314,13 @@ class RunPipelineTool:
                         return
                     if isinstance(scope_approved, str):
                         # User provided feedback — re-run scope with feedback
+                        await self._notifier.send(f"[Pipeline {pipeline_id}] Got it — revising scope with your feedback.")
                         context += f"\n\n## User feedback on scope\n{scope_approved}"
                         result, _ = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
                         artifacts[stage] = result
                         self._pipelines.save_artifact(pipeline_id, stage, _STAGE_ARTIFACT_TYPE[stage], result)
+                    elif scope_approved is True:
+                        await self._notifier.send(f"[Pipeline {pipeline_id}] Scope approved — continuing to PLAN.")
 
         except asyncio.CancelledError:
             log.info("run_pipeline_cancelled", pipeline_id=pipeline_id)
