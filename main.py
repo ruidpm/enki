@@ -20,7 +20,7 @@ class _SpinnerClearProcessor:
         try:
             import src.interfaces.cli as _cli
 
-            if _cli._spinner_active:
+            if _cli.is_spinner_active():
                 sys.stdout.write("\r\033[K")
                 sys.stdout.flush()
         except ImportError:
