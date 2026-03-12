@@ -79,9 +79,7 @@ class AuditVerifier:
         events = self._query.get_security_events(since=since)
         block_count = len(events)
         if block_count > _BLOCK_THRESHOLD:
-            anomalies.append(
-                f"High guardrail block rate: {block_count} blocks in last 24h (threshold: {_BLOCK_THRESHOLD})"
-            )
+            anomalies.append(f"High guardrail block rate: {block_count} blocks in last 24h (threshold: {_BLOCK_THRESHOLD})")
 
         # Check for repeated blocks on the same tool
         tool_blocks: dict[str, int] = {}
@@ -92,8 +90,6 @@ class AuditVerifier:
 
         for tool, count in tool_blocks.items():
             if count >= 5:
-                anomalies.append(
-                    f"Repeated blocks on tool '{tool}': {count} times in 24h"
-                )
+                anomalies.append(f"Repeated blocks on tool '{tool}': {count} times in 24h")
 
         return anomalies

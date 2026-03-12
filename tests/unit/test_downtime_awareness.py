@@ -117,9 +117,7 @@ class TestRunJobNow:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_run_job_now_records_in_store(
-        self, agent: MagicMock, notifier: MagicMock
-    ) -> None:
+    async def test_run_job_now_records_in_store(self, agent: MagicMock, notifier: MagicMock) -> None:
         store = MagicMock()
         store.record_run = MagicMock()
         s = Scheduler(agent=agent, notifier=notifier, store=store)

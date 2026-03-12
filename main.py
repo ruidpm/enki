@@ -82,6 +82,7 @@ class BuildResult(NamedTuple):
     compactor: Any
     schedule_store: Any
     manage_schedule_tool: Any
+    job_registry: Any
 
 
 def _build_agent(notifier: Any = None) -> BuildResult:
@@ -334,6 +335,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         compactor=compactor,
         schedule_store=schedule_store,
         manage_schedule_tool=_manage_schedule_tool,
+        job_registry=job_registry,
     )
 
 
@@ -366,6 +368,7 @@ def telegram() -> None:
     compactor = result.compactor
     schedule_store = result.schedule_store
     manage_schedule_tool = result.manage_schedule_tool
+    job_registry = result.job_registry
     bot.set_agent(agent)
 
     # Seed default jobs on first run, then load all from store
@@ -505,6 +508,9 @@ def telegram() -> None:
         import asyncio
 
         scheduler.stop()
+        cancelled = job_registry.cancel_all()
+        if cancelled:
+            log.info("shutdown_cancelled_jobs", count=cancelled)
         try:
             await asyncio.wait_for(
                 compactor.compact_session(agent.session_id),

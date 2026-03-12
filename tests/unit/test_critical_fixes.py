@@ -167,9 +167,7 @@ class TestAPIRetryTimeout:
             rate_limiter=MagicMock(reset=MagicMock()),
         )
 
-        agent._client.messages.create = AsyncMock(
-            side_effect=anthropic.APIConnectionError(request=MagicMock())
-        )
+        agent._client.messages.create = AsyncMock(side_effect=anthropic.APIConnectionError(request=MagicMock()))
 
         result = await agent.run_turn("test")
         assert "trouble" in result.lower() or "try again" in result.lower()
