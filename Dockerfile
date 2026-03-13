@@ -32,14 +32,13 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages \
 
 WORKDIR /app
 
+# Playwright + Chromium — shared path so any user can find the browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN python -m playwright install --with-deps chromium
+
 # Non-root user — required by claude --dangerously-skip-permissions (refuses to run as root)
 RUN useradd -m -u 1000 enki \
     && chown -R enki:enki /app
-
-# Playwright + Chromium — install as enki so browsers land in /home/enki/.cache
-USER enki
-RUN python -m playwright install --with-deps chromium
-USER root
 
 # src/ importable via PYTHONPATH — volume mounts work naturally
 ENV PYTHONPATH=/app
