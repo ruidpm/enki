@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir .
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl git ffmpeg sqlite3 \
+        curl git ffmpeg sqlite3 procps \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @anthropic-ai/claude-code \
@@ -32,12 +32,14 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages \
 
 WORKDIR /app
 
-# Playwright + Chromium for browser-based QA checks (and future web interaction)
-RUN python -m playwright install --with-deps chromium
-
 # Non-root user — required by claude --dangerously-skip-permissions (refuses to run as root)
 RUN useradd -m -u 1000 enki \
     && chown -R enki:enki /app
+
+# Playwright + Chromium — install as enki so browsers land in /home/enki/.cache
+USER enki
+RUN python -m playwright install --with-deps chromium
+USER root
 
 # src/ importable via PYTHONPATH — volume mounts work naturally
 ENV PYTHONPATH=/app

@@ -266,6 +266,12 @@ class RunPipelineTool:
                 _auto_pass = GateResult(verdict=GateVerdict.PASS, reason="auto", retry_hint="", structural_ok=True, llm_score=0.0)
 
                 if stage == PipelineStage.IMPLEMENT:
+                    # Ensure we start from main, then create feature branch so CCC commits land on it
+                    await _run_git("git", "checkout", "main", cwd=workspace_path)
+                    branch = _branch_name(task, pipeline_id)
+                    rc, _, _ = await _run_git("git", "checkout", "-b", branch, cwd=workspace_path)
+                    if rc != 0:
+                        await _run_git("git", "checkout", branch, cwd=workspace_path)
                     result = await self._run_implement(pipeline_id, task, workspace_path, language, artifacts)
                     gate_result = _auto_pass
                 elif stage == PipelineStage.PR:
@@ -789,11 +795,13 @@ class RunPipelineTool:
         review = artifacts.get(PipelineStage.REVIEW, "")
         impl = artifacts.get(PipelineStage.IMPLEMENT, "")
 
-        # Create and push branch
-        rc, _, err = await _run_git("git", "checkout", "-b", branch, cwd=workspace_path)
-        if rc != 0:
-            # Branch may already exist — try switching to it
-            await _run_git("git", "checkout", branch, cwd=workspace_path)
+        # Branch was created before IMPLEMENT — ensure we're on it and it has commits
+        await _run_git("git", "checkout", branch, cwd=workspace_path)
+
+        # Verify branch has commits ahead of main (CCC may have failed to commit)
+        _, ahead, _ = await _run_git("git", "rev-list", "--count", "main..HEAD", cwd=workspace_path)
+        if ahead.strip() == "0":
+            raise RuntimeError("No commits on feature branch — IMPLEMENT may have failed to produce changes.")
 
         rc, _, err = await _run_git("git", "push", "-u", "origin", branch, cwd=workspace_path)
         if rc != 0:
