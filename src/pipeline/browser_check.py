@@ -14,7 +14,7 @@ import structlog
 log = structlog.get_logger()
 
 try:
-    from playwright.async_api import async_playwright  # type: ignore[import-not-found]
+    from playwright.async_api import async_playwright  # type: ignore[import-not-found,unused-ignore]
 
     _HAS_PLAYWRIGHT = True
 except ImportError:
@@ -60,7 +60,7 @@ async def run_browser_check(workspace_path: str) -> str:
 
             await page.goto(f"file://{target.resolve()}", wait_until="load", timeout=15000)
 
-            snapshot = await page.accessibility.snapshot()  # type: ignore[union-attr,unused-ignore]
+            snapshot = await page.accessibility.snapshot()  # type: ignore[attr-defined,unused-ignore]
             if snapshot:
                 accessibility_tree = json.dumps(snapshot, indent=2)[:2000]
 
