@@ -15,10 +15,27 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
 _DEFAULT_RATES: tuple[float, float] = (3.00, 15.00)
 
 
-def model_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate cost in USD for a given model and token counts."""
+def model_cost_usd(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
+) -> float:
+    """Calculate cost in USD for a given model and token counts.
+
+    When cache tokens are provided, ``input_tokens`` from the API already
+    includes them in the total.  We subtract the cached portions and re-price
+    them at their actual rates (1.25x for writes, 0.1x for reads).
+    """
     in_rate, out_rate = MODEL_COSTS.get(model, _DEFAULT_RATES)
-    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
+    uncached = input_tokens - cache_creation_input_tokens - cache_read_input_tokens
+    return (
+        uncached * in_rate
+        + cache_creation_input_tokens * in_rate * 1.25
+        + cache_read_input_tokens * in_rate * 0.1
+        + output_tokens * out_rate
+    ) / 1_000_000
 
 
 def cost_rates_per_token(model: str) -> tuple[float, float]:

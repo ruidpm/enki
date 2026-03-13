@@ -346,9 +346,19 @@ class Agent:
                 log.error("api_exhausted_retries", error=str(exc))
                 return "I'm having trouble reaching the API right now. Please try again in a moment."
 
-            # Track cost
+            # Track cost (cache-aware)
             usage = response.usage
-            cost = model_cost_usd(model, usage.input_tokens, usage.output_tokens)
+            _cc = getattr(usage, "cache_creation_input_tokens", None)
+            _cr = getattr(usage, "cache_read_input_tokens", None)
+            cache_create = _cc if isinstance(_cc, int) else 0
+            cache_read = _cr if isinstance(_cr, int) else 0
+            cost = model_cost_usd(
+                model,
+                usage.input_tokens,
+                usage.output_tokens,
+                cache_creation_input_tokens=cache_create,
+                cache_read_input_tokens=cache_read,
+            )
             self._cost_guard.record_llm_call(usage.input_tokens, usage.output_tokens, cost)
             await self._audit.log_tier2(
                 Tier2Event.LLM_CALL,
@@ -357,6 +367,8 @@ class Agent:
                     "model": model,
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
+                    "cache_create_tokens": cache_create,
+                    "cache_read_tokens": cache_read,
                     "cost_usd": cost,
                 },
             )

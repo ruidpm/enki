@@ -34,6 +34,44 @@ class TestModelCostUsd:
         expected = (100 * 3.00 + 50 * 15.00) / 1_000_000
         assert cost == pytest.approx(expected)
 
+    def test_cache_read_reduces_cost(self) -> None:
+        """Cache reads should be charged at 0.1x the base input rate."""
+        # 1000 total input, 800 from cache read, 200 uncached
+        cost = model_cost_usd(ModelId.SONNET, 1000, 0, cache_read_input_tokens=800)
+        # 200 * 3.00 + 800 * 3.00 * 0.1 = 600 + 240 = 840 / 1M
+        expected = (200 * 3.00 + 800 * 3.00 * 0.1) / 1_000_000
+        assert cost == pytest.approx(expected)
+
+    def test_cache_write_increases_cost(self) -> None:
+        """Cache writes should be charged at 1.25x the base input rate."""
+        cost = model_cost_usd(ModelId.SONNET, 1000, 0, cache_creation_input_tokens=1000)
+        expected = (1000 * 3.00 * 1.25) / 1_000_000
+        assert cost == pytest.approx(expected)
+
+    def test_cache_mixed(self) -> None:
+        """Mixed cache read + write + uncached + output tokens."""
+        # 1000 total input: 300 cache write, 500 cache read, 200 uncached
+        cost = model_cost_usd(
+            ModelId.SONNET,
+            1000,
+            100,
+            cache_creation_input_tokens=300,
+            cache_read_input_tokens=500,
+        )
+        expected = (
+            200 * 3.00  # uncached
+            + 300 * 3.00 * 1.25  # cache write
+            + 500 * 3.00 * 0.1  # cache read
+            + 100 * 15.00  # output
+        ) / 1_000_000
+        assert cost == pytest.approx(expected)
+
+    def test_no_cache_tokens_backward_compatible(self) -> None:
+        """Without cache params, should behave identically to before."""
+        cost_old = (1000 * 3.00 + 500 * 15.00) / 1_000_000
+        cost_new = model_cost_usd(ModelId.SONNET, 1000, 500)
+        assert cost_new == pytest.approx(cost_old)
+
 
 class TestCostRatesPerToken:
     """cost_rates_per_token returns per-token rates matched by substring."""

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram import Message
 
-from src.interfaces.telegram_bot import TelegramBot
+from src.interfaces.telegram_bot import TelegramBot, escape_mdv2
 
 
 def _today() -> datetime:
@@ -152,7 +153,10 @@ async def test_on_message_calls_agent(bot: TelegramBot, agent: MagicMock) -> Non
     update = _make_update(chat_id=12345, text="What tasks do I have?")
     await bot._on_message(update, MagicMock())
     agent.run_turn.assert_awaited_once_with("What tasks do I have?")
-    update.message.reply_text.assert_awaited_once_with("Hello back")
+    # Response goes through _reply_md which tries MarkdownV2 first
+    update.message.reply_text.assert_awaited_once()
+    call_kwargs = update.message.reply_text.call_args
+    assert call_kwargs[0][0] == "Hello back"
 
 
 @pytest.mark.asyncio
@@ -278,7 +282,10 @@ async def test_callback_unauthorized_does_not_resolve(bot: TelegramBot) -> None:
 @pytest.mark.asyncio
 async def test_send_sends_message(bot: TelegramBot) -> None:
     await bot.send("Restarting now")
-    bot._app.bot.send_message.assert_awaited_once_with(12345, "Restarting now")
+    bot._app.bot.send_message.assert_awaited_once()
+    call_args = bot._app.bot.send_message.call_args
+    assert call_args[0][0] == 12345
+    assert call_args[0][1] == "Restarting now"
 
 
 @pytest.mark.asyncio
@@ -408,3 +415,77 @@ def test_photo_handler_uses_tempfile_mkstemp() -> None:
     source = inspect.getsource(mod.TelegramBot._on_photo)
     assert "mkstemp" in source or "NamedTemporaryFile" in source
     assert 'f"/tmp/' not in source
+
+
+# ---------------------------------------------------------------------------
+# MarkdownV2 helpers
+# ---------------------------------------------------------------------------
+
+
+def test_escape_mdv2_escapes_special_chars() -> None:
+    assert escape_mdv2("hello_world") == r"hello\_world"
+    assert escape_mdv2("price is $5.00") == r"price is $5\.00"
+    assert escape_mdv2("a*b*c") == r"a\*b\*c"
+    assert escape_mdv2("(test)") == r"\(test\)"
+
+
+def test_escape_mdv2_plain_text_unchanged() -> None:
+    assert escape_mdv2("hello world") == "hello world"
+    assert escape_mdv2("abc123") == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_send_md_falls_back_on_parse_error(bot: TelegramBot) -> None:
+    """If MarkdownV2 parse fails, _send_md retries as plain text."""
+    from telegram.error import BadRequest
+
+    call_count = 0
+
+    async def _side_effect(*args: Any, **kwargs: Any) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if kwargs.get("parse_mode"):
+            raise BadRequest("Can't parse entities")
+        return MagicMock()
+
+    bot._app.bot.send_message = AsyncMock(side_effect=_side_effect)
+    await bot._send_md(12345, "bad *markdown")
+    assert call_count == 2  # first MarkdownV2, then plain
+
+
+@pytest.mark.asyncio
+async def test_send_md_succeeds_with_valid_markdown(bot: TelegramBot) -> None:
+    """Valid MarkdownV2 should be sent directly without fallback."""
+    bot._app.bot.send_message = AsyncMock(return_value=MagicMock())
+    await bot._send_md(12345, r"*bold* and \_escaped\_")
+    bot._app.bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reply_md_falls_back_on_parse_error(bot: TelegramBot) -> None:
+    from telegram.error import BadRequest
+
+    message = MagicMock()
+    call_count = 0
+
+    async def _side_effect(text: str, **kwargs: Any) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if kwargs.get("parse_mode"):
+            raise BadRequest("Can't parse entities")
+        return MagicMock()
+
+    message.reply_text = AsyncMock(side_effect=_side_effect)
+    await bot._reply_md(message, "bad *markdown")
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_uses_markdownv2(bot: TelegramBot) -> None:
+    """bot.send() should attempt MarkdownV2 formatting."""
+    from telegram.constants import ParseMode
+
+    bot._app.bot.send_message = AsyncMock(return_value=MagicMock())
+    await bot.send("*bold* message")
+    call_kwargs = bot._app.bot.send_message.call_args
+    assert call_kwargs[1].get("parse_mode") == ParseMode.MARKDOWN_V2

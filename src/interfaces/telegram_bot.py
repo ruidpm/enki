@@ -7,12 +7,14 @@ import base64
 import contextlib
 import json
 import os
+import re
 import tempfile
 from typing import Any
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
-from telegram.error import Conflict
+from telegram.constants import ParseMode
+from telegram.error import BadRequest, Conflict
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -25,6 +27,14 @@ from telegram.ext import (
 log = structlog.get_logger()
 
 _CONFIRM_TIMEOUT = 300  # seconds to wait for user response
+
+# MarkdownV2 special chars that must be escaped outside formatting spans.
+_MDV2_ESCAPE_RE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!\\])")
+
+
+def escape_mdv2(text: str) -> str:
+    """Escape MarkdownV2 special characters in plain text segments."""
+    return _MDV2_ESCAPE_RE.sub(r"\\\1", text)
 
 
 class TelegramBot:
@@ -77,6 +87,35 @@ class TelegramBot:
 
     def _authorized_chat(self, chat_id: int) -> bool:
         return chat_id == self._allowed_chat_id
+
+    # ------------------------------------------------------------------
+    # MarkdownV2 helpers
+    # ------------------------------------------------------------------
+
+    async def _send_md(self, chat_id: int, text: str, **kwargs: Any) -> Message:
+        """Send with MarkdownV2, fall back to plain text on parse failure."""
+        try:
+            return await self._app.bot.send_message(
+                chat_id,
+                text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                **kwargs,
+            )
+        except BadRequest as exc:
+            if "parse" in str(exc).lower() or "can't" in str(exc).lower():
+                log.warning("mdv2_parse_fallback", error=str(exc))
+                return await self._app.bot.send_message(chat_id, text, **kwargs)
+            raise
+
+    async def _reply_md(self, message: Any, text: str) -> Message:
+        """reply_text with MarkdownV2, fall back to plain text on parse failure."""
+        try:
+            return await message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)  # type: ignore[no-any-return]
+        except BadRequest as exc:
+            if "parse" in str(exc).lower() or "can't" in str(exc).lower():
+                log.warning("mdv2_parse_fallback", error=str(exc))
+                return await message.reply_text(text)  # type: ignore[no-any-return]
+            raise
 
     # ------------------------------------------------------------------
     # Command handlers
@@ -218,7 +257,7 @@ class TelegramBot:
             typing_task = asyncio.create_task(_keep_typing())
             try:
                 response = await self._agent.run_turn(content)
-                await update.message.reply_text(response)  # type: ignore[union-attr]
+                await self._reply_md(update.message, response)
             except Exception as exc:
                 log.error("telegram_error", error=str(exc))
                 await update.message.reply_text(f"Error: {exc}")  # type: ignore[union-attr]
@@ -419,7 +458,7 @@ class TelegramBot:
     # ------------------------------------------------------------------
 
     async def send(self, message: str) -> None:
-        await self._app.bot.send_message(self._allowed_chat_id, message)
+        await self._send_md(self._allowed_chat_id, message)
 
     async def ask_single_confirm(self, reason: str, changes_summary: str) -> bool:
         text = f"Reason: {reason}\n\n{changes_summary}\n\nProceed?"

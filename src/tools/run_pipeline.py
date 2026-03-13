@@ -540,25 +540,32 @@ class RunPipelineTool:
         prompt = _build_stage_prompt(stage, task, context, artifacts)
         model = self._resolve_model(stage_config.model_tier)
 
-        _base = (
-            "You are a helpful sub-agent. Complete the given task and return a concise result. "
-            "Plain text only — no markdown, no **bold**, no # headers, no bullet points with *, "
-            "no backtick code blocks."
-        )
-        system = ((role + "\n\n") if role else "") + _base
+        _base = "You are a helpful sub-agent. Complete the given task and return a concise result."
+        system_text = ((role + "\n\n") if role else "") + _base
+        system_block: list[dict[str, Any]] = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
 
         step_start = time.monotonic()
         response = await self._anthropic_client.messages.create(
             model=model,
             max_tokens=stage_config.max_result_tokens,
-            system=system,
+            system=system_block,
             messages=[{"role": "user", "content": prompt}],
         )
 
         step_in = response.usage.input_tokens
         step_out = response.usage.output_tokens
         total_tokens = step_in + step_out
-        cost = model_cost_usd(model, step_in, step_out)
+        _cc = getattr(response.usage, "cache_creation_input_tokens", None)
+        _cr = getattr(response.usage, "cache_read_input_tokens", None)
+        cache_create = _cc if isinstance(_cc, int) else 0
+        cache_read = _cr if isinstance(_cr, int) else 0
+        cost = model_cost_usd(
+            model,
+            step_in,
+            step_out,
+            cache_creation_input_tokens=cache_create,
+            cache_read_input_tokens=cache_read,
+        )
         duration_ms = int((time.monotonic() - step_start) * 1000)
 
         # Record tokens/cost

@@ -113,12 +113,13 @@ class SubAgentRunner:
         """Run the sub-agent on the given task. Returns (response_text, total_tokens_used)."""
         messages: list[dict[str, Any]] = [{"role": "user", "content": task}]
         tool_defs = self._tool_defs()
-        _base = (
-            "You are a helpful sub-agent. Complete the given task and return a concise result. "
-            "Plain text only — no markdown, no **bold**, no # headers, no bullet points with *, "
-            "no backtick code blocks."
-        )
-        system = ((self._system_prefix + "\n\n") if self._system_prefix else "") + _base
+        _base = "You are a helpful sub-agent. Complete the given task and return a concise result."
+        system: str | list[dict[str, Any]] = ((self._system_prefix + "\n\n") if self._system_prefix else "") + _base
+
+        # Cache: system prompt block + last tool definition
+        system = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if tool_defs:
+            tool_defs = [*tool_defs[:-1], {**tool_defs[-1], "cache_control": {"type": "ephemeral"}}]
 
         total_tokens = 0
 
@@ -151,7 +152,17 @@ class SubAgentRunner:
             if self._on_cost is not None:
                 from src.costs import model_cost_usd
 
-                step_cost = model_cost_usd(self._model, step_in, step_out)
+                _cc = getattr(response.usage, "cache_creation_input_tokens", None)
+                _cr = getattr(response.usage, "cache_read_input_tokens", None)
+                cache_create = _cc if isinstance(_cc, int) else 0
+                cache_read = _cr if isinstance(_cr, int) else 0
+                step_cost = model_cost_usd(
+                    self._model,
+                    step_in,
+                    step_out,
+                    cache_creation_input_tokens=cache_create,
+                    cache_read_input_tokens=cache_read,
+                )
                 self._on_cost(step_in, step_out, step_cost)
 
             # Collect tool use blocks

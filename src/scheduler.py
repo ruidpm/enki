@@ -194,9 +194,24 @@ def default_jobs() -> list[ScheduledJob]:
             job_id="morning_briefing",
             cron="0 8 * * *",
             prompt=(
-                "Morning briefing. Check tasks due TODAY or overdue — ignore anything "
-                "due more than 2 days from now. Check calendar for today's events. "
-                "Keep it short: just the actionable items for today."
+                "Morning briefing. Gather data and present a structured report.\n\n"
+                "## Sections (use these exact headers, skip empty ones):\n"
+                "*Calendar* — today's events from calendar_read (days=1). "
+                "If calendar is unavailable, say so in one line and move on.\n"
+                "*Tasks* — open tasks due today or overdue (ignore anything due >2 days out).\n"
+                "*Email* — unread emails needing action (if email tool is available). "
+                "Skip this section entirely if email is not configured.\n"
+                "*Blockers* — anything waiting on someone else or stuck.\n\n"
+                "## Classification (tag each item):\n"
+                "DISPATCH = you can handle autonomously, no input needed\n"
+                "PREP = you should prepare materials/research for me\n"
+                "YOURS = requires my decision or action\n"
+                "SKIP = not worth attention today\n\n"
+                "Format: one line per item, tag in brackets. Example:\n"
+                "[YOURS] Team standup at 10am — prepare talking points?\n"
+                "[DISPATCH] Overdue task: renew API token — want me to handle it?\n\n"
+                "End with: *That's it for today.*\n"
+                "Keep it tight — no filler, no preamble."
             ),
         ),
         ScheduledJob(
