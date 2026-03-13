@@ -418,13 +418,14 @@ def telegram() -> None:
 
     bot.set_audit_query(AuditQuery(db=result.audit))
 
-    # Seed default jobs on first run, then load all from store
+    # Upsert default jobs every startup so prompt improvements propagate
     from src.schedule.store import ScheduleStore as _SS
 
     assert isinstance(schedule_store, _SS)
-    if not schedule_store.list_all():
-        for job in default_jobs():
-            schedule_store.upsert(job.job_id, job.cron, job.prompt)
+    # Remove renamed job (eod_team_report → eod_report)
+    schedule_store.remove("eod_team_report")
+    for job in default_jobs():
+        schedule_store.upsert(job.job_id, job.cron, job.prompt)
 
     scheduler = Scheduler(agent=agent, notifier=bot, store=schedule_store, timezone=config.timezone)
     scheduler.load_from_store()

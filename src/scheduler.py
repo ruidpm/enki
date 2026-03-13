@@ -185,20 +185,28 @@ class Scheduler:
 
 
 def default_jobs() -> list[ScheduledJob]:
-    """Default proactive jobs — seeded into the schedule store on first run."""
+    """Default proactive jobs — seeded into the schedule store on startup.
+
+    These are upserted every startup so prompt improvements propagate automatically.
+    """
     return [
         ScheduledJob(
             job_id="morning_briefing",
             cron="0 8 * * *",
             prompt=(
-                "Give me a morning briefing: tasks due today or overdue, "
-                "any calendar events today, and anything I should be aware of."
+                "Morning briefing. Check tasks due TODAY or overdue — ignore anything "
+                "due more than 2 days from now. Check calendar for today's events. "
+                "Keep it short: just the actionable items for today."
             ),
         ),
         ScheduledJob(
             job_id="deadline_check",
             cron="0 17 * * *",
-            prompt=("Check for any tasks due in the next 48 hours and remind me of upcoming deadlines."),
+            prompt=(
+                "Check for tasks due in the next 48 hours or overdue. "
+                "Do NOT mention tasks with deadlines more than 7 days away — "
+                "those are not urgent. Only surface what needs attention NOW."
+            ),
         ),
         ScheduledJob(
             job_id="audit_verification",
@@ -210,12 +218,15 @@ def default_jobs() -> list[ScheduledJob]:
             ),
         ),
         ScheduledJob(
-            job_id="eod_team_report",
+            job_id="eod_report",
             cron="0 21 * * *",
             prompt=(
-                "Generate end-of-day team report. Call team_report to get all metrics, "
-                "then format a concise summary: each team's tasks today, success rate, "
-                "tokens used vs budget."
+                "End-of-day report. Summarize what was accomplished today:\n"
+                "1. Review today's conversation history — what did we work on? "
+                "What was built, fixed, or decided?\n"
+                "2. Check team_report for team activity (tasks, success rate, cost).\n"
+                "3. List any open blockers or things to follow up on tomorrow.\n"
+                "Keep it concise — bullet points, no fluff."
             ),
         ),
     ]

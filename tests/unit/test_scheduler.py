@@ -63,6 +63,7 @@ def test_default_jobs_returns_expected_ids() -> None:
     ids = {j.job_id for j in jobs}
     assert "morning_briefing" in ids
     assert "deadline_check" in ids
+    assert "eod_report" in ids
 
 
 def test_disabled_job_not_added_to_apscheduler(scheduler: Scheduler) -> None:
