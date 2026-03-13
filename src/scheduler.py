@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
@@ -53,6 +54,22 @@ class Scheduler:
         self._tz = timezone
         self._scheduler = AsyncIOScheduler()
         self.jobs: dict[str, ScheduledJob] = {}
+        # Backup config — injected via set_backup_config()
+        self._backup_data_dir: Path | None = None
+        self._backup_memory_dir: Path | None = None
+        self._backup_repo: str = ""
+
+    def set_backup_config(
+        self,
+        *,
+        data_dir: Path,
+        memory_dir: Path,
+        backup_repo: str,
+    ) -> None:
+        """Inject paths and repo for cloud backup job."""
+        self._backup_data_dir = data_dir
+        self._backup_memory_dir = memory_dir
+        self._backup_repo = backup_repo
 
     def load_from_store(self) -> None:
         """Load all enabled jobs from the store into APScheduler. Call at startup."""
@@ -76,9 +93,10 @@ class Scheduler:
         except (JobLookupError, KeyError):
             pass  # Job didn't exist yet — expected on first add
         if job.enabled:
+            handler = self._run_backup if job.job_id == "cloud_backup" else self._run_job
             minute, hour, dom, month, dow = job.cron.split()
             self._scheduler.add_job(
-                self._run_job,
+                handler,
                 trigger=CronTrigger(
                     minute=minute,
                     hour=hour,
@@ -176,6 +194,24 @@ class Scheduler:
                     error=str(notify_exc),
                 )
 
+    async def _run_backup(self, _job: ScheduledJob) -> None:
+        """Run cloud backup directly — no LLM needed."""
+        from src.backup import run_backup
+
+        if not self._backup_repo or self._backup_data_dir is None or self._backup_memory_dir is None:
+            log.info("backup_skipped", reason="backup not configured")
+            return
+        log.info("backup_starting")
+        result = await run_backup(
+            data_dir=self._backup_data_dir,
+            memory_dir=self._backup_memory_dir,
+            backup_repo=self._backup_repo,
+        )
+        try:
+            await self._notifier.send(result)
+        except Exception as exc:
+            log.warning("backup_notify_failed", error=str(exc))
+
     def start(self) -> None:
         self._scheduler.start()
         log.info("scheduler_started", job_count=len(self.jobs))
@@ -243,5 +279,10 @@ def default_jobs() -> list[ScheduledJob]:
                 "3. List any open blockers or things to follow up on tomorrow.\n"
                 "Keep it concise — bullet points, no fluff."
             ),
+        ),
+        ScheduledJob(
+            job_id="cloud_backup",
+            cron="0 3 * * *",
+            prompt="cloud_backup",  # not sent to LLM — routed to _run_backup
         ),
     ]

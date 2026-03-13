@@ -152,11 +152,11 @@ async def test_on_message_calls_agent(bot: TelegramBot, agent: MagicMock) -> Non
     bot.set_agent(agent)
     update = _make_update(chat_id=12345, text="What tasks do I have?")
     await bot._on_message(update, MagicMock())
-    agent.run_turn.assert_awaited_once_with("What tasks do I have?")
-    # Response goes through _reply_md which tries MarkdownV2 first
-    update.message.reply_text.assert_awaited_once()
-    call_kwargs = update.message.reply_text.call_args
-    assert call_kwargs[0][0] == "Hello back"
+    agent.run_turn.assert_awaited_once()
+    call_args = agent.run_turn.call_args
+    assert call_args[0][0] == "What tasks do I have?"
+    # stream_callback should be passed as a kwarg
+    assert "stream_callback" in call_args[1]
 
 
 @pytest.mark.asyncio

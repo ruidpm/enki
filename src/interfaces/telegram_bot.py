@@ -238,6 +238,66 @@ class TelegramBot:
                 lines = ["Recent facts:"] + [f"- {f}" for f in facts]
                 await update.message.reply_text("\n".join(lines))  # type: ignore[union-attr]
 
+    async def _edit_md(self, chat_id: int, message_id: int, text: str) -> None:
+        """Edit a message with MarkdownV2, fall back to plain text on parse failure."""
+        try:
+            await self._app.bot.edit_message_text(
+                text,
+                chat_id=chat_id,
+                message_id=message_id,
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+        except BadRequest as exc:
+            if "parse" in str(exc).lower() or "can't" in str(exc).lower():
+                log.warning("mdv2_edit_parse_fallback", error=str(exc))
+                await self._app.bot.edit_message_text(
+                    text,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                )
+            elif "message is not modified" in str(exc).lower():
+                pass  # Telegram returns this if text hasn't changed — ignore
+            else:
+                raise
+
+    def _make_stream_callback(self, chat_id: int) -> tuple[Any, Any]:
+        """Build a streaming callback that sends/edits messages with rate limiting.
+
+        Returns (callback, state) where state.streamed indicates if any chunks
+        were received.
+        """
+        import time as _time
+
+        class _StreamState:
+            message_id: int | None = None
+            last_edit: float = 0.0
+            streamed: bool = False
+            last_text: str = ""
+
+        state = _StreamState()
+        _EDIT_INTERVAL = 0.4  # seconds — max 1 edit per 400ms
+
+        async def _stream_cb(accumulated_text: str) -> None:
+            state.streamed = True
+            state.last_text = accumulated_text
+            now = _time.monotonic()
+
+            if state.message_id is None:
+                # First chunk — send a new message
+                msg = await self._send_md(chat_id, accumulated_text)
+                state.message_id = msg.message_id
+                state.last_edit = now
+                return
+
+            # Rate-limit edits
+            if now - state.last_edit < _EDIT_INTERVAL:
+                return  # skip intermediate update
+
+            state.last_edit = now
+            await self._edit_md(chat_id, state.message_id, accumulated_text)
+
+        return _stream_cb, state
+
     async def _run_turn_with_typing(self, update: Update, content: str | list[dict[str, Any]]) -> None:
         """Run a turn with persistent typing indicator. update.message must be set."""
         if self._turn_lock.locked():
@@ -256,8 +316,17 @@ class TelegramBot:
 
             typing_task = asyncio.create_task(_keep_typing())
             try:
-                response = await self._agent.run_turn(content)
-                await self._reply_md(update.message, response)
+                chat_id = update.message.chat_id  # type: ignore[union-attr]
+                stream_cb, stream_state = self._make_stream_callback(chat_id)
+                response = await self._agent.run_turn(content, stream_callback=stream_cb)
+
+                if stream_state.streamed and stream_state.message_id is not None:
+                    # Ensure the final text is always sent (may have been rate-limited)
+                    if stream_state.last_text != response or stream_state.last_text:
+                        await self._edit_md(chat_id, stream_state.message_id, response)
+                else:
+                    # Streaming never happened — fall back to regular reply
+                    await self._reply_md(update.message, response)
             except Exception as exc:
                 log.error("telegram_error", error=str(exc))
                 await update.message.reply_text(f"Error: {exc}")  # type: ignore[union-attr]

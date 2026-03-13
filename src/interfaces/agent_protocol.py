@@ -5,6 +5,7 @@ Named AgentProtocol to avoid collision with src.agent.Agent (the concrete class)
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -12,4 +13,8 @@ from typing import Any, Protocol, runtime_checkable
 class AgentProtocol(Protocol):
     """Minimal contract for tools that call back into the agent."""
 
-    async def run_turn(self, user_message: str | list[dict[str, Any]]) -> str: ...
+    async def run_turn(
+        self,
+        user_message: str | list[dict[str, Any]],
+        stream_callback: Callable[[str], Awaitable[None]] | None = None,
+    ) -> str: ...

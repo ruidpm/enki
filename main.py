@@ -404,8 +404,16 @@ def telegram() -> None:
 
     config = Settings()  # type: ignore[call-arg]
 
+    from src.notification import SmartNotifier
+
     bot = TelegramBot(config.telegram_bot_token, config.telegram_chat_id, confirm_timeout=config.confirm_timeout_seconds)
-    result = _build_agent(notifier=bot)
+    notifier: SmartNotifier | TelegramBot = SmartNotifier(
+        bot,
+        quiet_start=config.quiet_hours_start,
+        quiet_end=config.quiet_hours_end,
+        timezone=config.timezone,
+    )
+    result = _build_agent(notifier=notifier)
     agent = result.agent
     compactor = result.compactor
     schedule_store = result.schedule_store
@@ -427,7 +435,13 @@ def telegram() -> None:
     for job in default_jobs():
         schedule_store.upsert(job.job_id, job.cron, job.prompt)
 
-    scheduler = Scheduler(agent=agent, notifier=bot, store=schedule_store, timezone=config.timezone)
+    scheduler = Scheduler(agent=agent, notifier=notifier, store=schedule_store, timezone=config.timezone)
+    if config.backup_repo:
+        scheduler.set_backup_config(
+            data_dir=Path("data"),
+            memory_dir=Path("memory"),
+            backup_repo=config.backup_repo,
+        )
     scheduler.load_from_store()
 
     # Wire scheduler into manage_schedule tool
@@ -478,7 +492,7 @@ def telegram() -> None:
 
                     lost_at = datetime.fromtimestamp(offline_since, tz=UTC).strftime("%H:%M UTC")
                     with contextlib.suppress(Exception):
-                        await bot.send(f"Internet restored. Was offline from {lost_at} ({duration_min} min ago).")
+                        await notifier.send(f"Internet restored. Was offline from {lost_at} ({duration_min} min ago).")
                     offline_since = None
             else:
                 if offline_since is None:
@@ -504,7 +518,7 @@ def telegram() -> None:
                 if msg:
                     log.warning("system_health_alerts", count=len(alerts))
                     response = await agent.run_turn(f"SYSTEM: {msg}\n\nInform the user about these issues and suggest actions.")
-                    await bot.send(response)
+                    await notifier.send(response)
             except Exception as exc:
                 log.warning("system_health_monitor_failed", error=str(exc))
 
@@ -559,7 +573,7 @@ def telegram() -> None:
                         f"If there are missed jobs, ask if they want you to run them now."
                     )
                     response = await agent.run_turn(downtime_msg)
-                    await bot.send(response)
+                    await notifier.send(response)
                     log.info(
                         "downtime_awareness_routed",
                         gap_minutes=gap // 60,
@@ -568,10 +582,24 @@ def telegram() -> None:
         except Exception as exc:
             log.warning("startup_catchup_failed", error=str(exc))
 
+        async def _notification_flusher() -> None:
+            """Flush queued notifications every 15 minutes."""
+            from src.notification import SmartNotifier as _SN
+
+            if not isinstance(notifier, _SN):
+                return
+            while True:
+                await asyncio.sleep(900)  # 15 minutes
+                try:
+                    await notifier.flush_queue()
+                except Exception as exc:
+                    log.warning("notification_flush_failed", error=str(exc))
+
         # Background tasks
         asyncio.create_task(_heartbeat_writer())
         asyncio.create_task(_connectivity_monitor())
         asyncio.create_task(_system_health_monitor())
+        asyncio.create_task(_notification_flusher())
 
         # Weekly facts cleanup — runs only if due and facts.md is large enough
         try:

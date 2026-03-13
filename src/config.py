@@ -64,5 +64,12 @@ class Settings(BaseSettings):
     # Timezone — applied to all scheduled jobs
     timezone: str = "UTC"
 
+    # Quiet hours — notifications classified as NORMAL/LOW are queued during this window
+    quiet_hours_start: int = Field(default=22, ge=0, le=23)  # 10pm
+    quiet_hours_end: int = Field(default=8, ge=0, le=23)  # 8am
+
+    # Cloud backup
+    backup_repo: str = ""
+
     # Feature flags
     debug_audit: bool = False
