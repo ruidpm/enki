@@ -26,15 +26,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Playwright + Chromium — installed BEFORE builder output so code changes don't
+# invalidate the ~300MB browser download. This layer only rebuilds when the
+# playwright version pin or base image changes.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN pip install --no-cache-dir "playwright>=1.40" \
+    && python -m playwright install --with-deps chromium
+
 # Compiled Python deps (sqlite-vec .so, anthropic, structlog, etc.)
+# This overwrites the standalone playwright pip package above with the builder's
+# version (same range), but browsers at /opt/playwright-browsers are untouched.
 COPY --from=builder /usr/local/lib/python3.12/site-packages \
                     /usr/local/lib/python3.12/site-packages
 
 WORKDIR /app
-
-# Playwright + Chromium — shared path so any user can find the browsers
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
-RUN python -m playwright install --with-deps chromium
 
 # Non-root user — required by claude --dangerously-skip-permissions (refuses to run as root)
 RUN useradd -m -u 1000 enki \
