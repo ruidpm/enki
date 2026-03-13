@@ -291,7 +291,7 @@ class Agent:
                             delta_text: str = getattr(event.delta, "text", "")
                             accumulated += delta_text
                             await stream_callback(accumulated)
-                    msg: anthropic.types.Message = stream.get_final_message()  # type: ignore[assignment]
+                    msg: anthropic.types.Message = await stream.get_final_message()
                     return msg
             except (anthropic.APIConnectionError, anthropic.APITimeoutError, TimeoutError) as exc:
                 last_exc = exc

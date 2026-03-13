@@ -149,7 +149,7 @@ class MockAsyncStream:
         except StopIteration:
             raise StopAsyncIteration from None
 
-    def get_final_message(self) -> MagicMock:
+    async def get_final_message(self) -> MagicMock:
         return self._final_message
 
 
