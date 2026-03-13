@@ -669,6 +669,41 @@ async def test_single_shot_does_not_inject_ccc(
     assert "tools" not in call_kwargs or not call_kwargs.get("tools")
 
 
+@pytest.mark.asyncio
+async def test_test_stage_uses_single_shot(
+    tmp_path: Path,
+    pipeline_store: PipelineStore,
+    workspace_store: WorkspaceStore,
+    teams_store: TeamsStore,
+) -> None:
+    """TEST is single-shot — should call Anthropic API directly, not SubAgentRunner."""
+    notifier = _make_notifier()
+    tool = _make_tool(tmp_path, pipeline_store, workspace_store, teams_store, notifier=notifier)
+
+    pipeline_id = "ss05"
+    pipeline_store.create(pipeline_id, workspace_id="ws1", task="build app")
+
+    with (
+        patch("src.tools.run_pipeline.SubAgentRunner") as MockRunner,
+        patch.object(tool, "_anthropic_client") as mock_client,
+    ):
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_single_shot_response("## Test Summary\nLooks good.\n## Verdict\npassed — ready for review")
+        )
+
+        result = await tool._run_llm_stage(
+            pipeline_id=pipeline_id,
+            stage="test",
+            task="build app",
+            context="",
+            artifacts={"plan": "Build the thing.", "implement": "Built the thing."},
+        )
+
+    MockRunner.assert_not_called()
+    mock_client.messages.create.assert_called_once()
+    assert "Test Summary" in result
+
+
 # ---------------------------------------------------------------------------
 # Prompt structure tests
 # ---------------------------------------------------------------------------
@@ -708,10 +743,13 @@ class TestBuildStagePrompt:
     def test_test_prompt_has_sections(self) -> None:
         from src.tools.run_pipeline import _build_stage_prompt
 
-        prompt = _build_stage_prompt("test", "build app", "", {"implement": "done"})
-        assert "## Test Results" in prompt
-        assert "## Coverage" in prompt
-        assert "## Gaps and Missing Scenarios" in prompt
+        prompt = _build_stage_prompt("test", "build app", "", {"plan": "P", "implement": "done"})
+        assert "## Test Summary" in prompt
+        assert "## Deviations from Plan" in prompt
+        assert "## Missing Test Paths" in prompt
+        assert "## Edge Cases and Security" in prompt
+        assert "## Verdict" in prompt
+        assert "NO tools" in prompt
 
     def test_review_prompt_has_sections(self) -> None:
         from src.tools.run_pipeline import _build_stage_prompt
@@ -732,14 +770,25 @@ class TestBuildStagePrompt:
         assert long_research in prompt
 
     def test_agentic_truncates_artifacts(self) -> None:
-        """Agentic stages should truncate prior artifacts."""
+        """Agentic stages (RESEARCH) should truncate prior artifacts."""
         from src.tools.run_pipeline import _build_stage_prompt
 
+        # RESEARCH is the only remaining agentic LLM stage — it doesn't receive prior artifacts
+        # so test truncation via the review stage's agentic fallback path is no longer applicable.
+        # Instead verify TEST (now single-shot) gets full artifacts.
         long_impl = "B" * 5000
-        prompt = _build_stage_prompt("test", "build app", "", {"implement": long_impl})
-        # Should be truncated to 800 chars
-        assert long_impl not in prompt
-        assert long_impl[:800] in prompt
+        prompt = _build_stage_prompt("test", "build app", "", {"plan": "P", "implement": long_impl})
+        # Single-shot: full artifact, not truncated
+        assert long_impl in prompt
+
+    def test_test_includes_browser_check(self) -> None:
+        """TEST prompt should include browser check results if present."""
+        from src.tools.run_pipeline import _build_stage_prompt
+
+        browser_report = "## Browser Pre-Check\nFile: index.html\n### Console Errors\nNone"
+        prompt = _build_stage_prompt("test", "build app", "", {"implement": "done", "_browser_check": browser_report})
+        assert "Browser Pre-Check" in prompt
+        assert "Console Errors" in prompt
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ dependencies = [
     "google-api-python-client>=2.100,<3.0",
     "google-auth-oauthlib>=1.0,<2.0",
     "openai-whisper>=20231117",
+    "playwright>=1.40",
 ]
 
 [project.optional-dependencies]

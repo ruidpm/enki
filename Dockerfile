@@ -32,6 +32,10 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages \
 
 WORKDIR /app
 
+# Playwright + Chromium for browser-based QA checks (and future web interaction)
+RUN pip install --no-cache-dir playwright \
+    && playwright install --with-deps chromium
+
 # Non-root user — required by claude --dangerously-skip-permissions (refuses to run as root)
 RUN useradd -m -u 1000 enki \
     && chown -R enki:enki /app

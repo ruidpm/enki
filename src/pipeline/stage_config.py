@@ -39,10 +39,11 @@ STAGE_CONFIGS: dict[str, StageConfig] = {
         max_result_tokens=8192,
     ),
     "test": StageConfig(
-        mode="agentic",
-        model_tier="haiku",
-        max_steps=4,
-        tools_allowed=True,
+        mode="single_shot",
+        model_tier="opus",
+        max_steps=1,
+        tools_allowed=False,
+        max_result_tokens=8192,
     ),
     "review": StageConfig(
         mode="single_shot",

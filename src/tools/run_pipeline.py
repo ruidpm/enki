@@ -283,6 +283,14 @@ class RunPipelineTool:
                     result = await self._run_pr(pipeline_id, task, workspace_path, artifacts)
                     gate_result = _auto_pass
                 else:
+                    # Run deterministic browser check before TEST stage
+                    if stage == PipelineStage.TEST:
+                        from src.pipeline.browser_check import run_browser_check
+
+                        browser_report = await run_browser_check(workspace_path)
+                        if browser_report:
+                            artifacts["_browser_check"] = browser_report
+
                     result, gate_result = await self._run_with_gate(pipeline_id, stage, task, context, artifacts)
 
                 artifacts[stage] = result
@@ -878,21 +886,30 @@ def _build_stage_prompt(
             "## Test Strategy (TDD)"
         )
     elif stage == PipelineStage.TEST:
+        if PipelineStage.PLAN in artifacts:
+            _art = artifacts[PipelineStage.PLAN] if is_single_shot else artifacts[PipelineStage.PLAN][:800]
+            parts.append(f"## Plan\n{_art}")
         if PipelineStage.IMPLEMENT in artifacts:
-            parts.append(f"## Implementation summary\n{artifacts[PipelineStage.IMPLEMENT][:800]}")
+            _art = artifacts[PipelineStage.IMPLEMENT] if is_single_shot else artifacts[PipelineStage.IMPLEMENT][:800]
+            parts.append(f"## Implementation summary\n{_art}")
+        if "_browser_check" in artifacts:
+            parts.append(artifacts["_browser_check"])
         parts.append(
-            "Your job is to verify the implementation works. Follow these rules strictly:\n"
-            "1. First check what testing infrastructure exists (package.json, test files, pytest, etc.)\n"
-            "2. If tests exist, RUN them and report results. Do NOT modify test files.\n"
-            "3. If NO test infrastructure exists, do a quick smoke test (e.g. syntax check, import check, "
-            "or open the main file) — then report what you found.\n"
-            "4. Do NOT create test frameworks, install testing libraries, or restructure code for testability.\n"
-            "5. Do NOT modify production code. You are QA, not a developer.\n"
-            "6. Finish in 3 steps or fewer.\n\n"
+            "You are QA. Review the implementation against the plan and produce a quality report.\n"
+            "You have NO tools — do NOT attempt to run, create, or modify any code.\n"
+            "Analyze the implementation for:\n"
+            "- Deviations from the plan\n"
+            "- Missing test paths or untested edge cases\n"
+            "- Security concerns (input validation, auth, data exposure)\n"
+            "- Code quality issues visible from the implementation summary\n\n"
             "Structure your output with these exact sections:\n"
-            "## Test Results\n"
-            "## Coverage\n"
-            "## Gaps and Missing Scenarios"
+            "## Test Summary\n"
+            "(Overall assessment with brief rationale)\n"
+            "## Deviations from Plan\n"
+            "## Missing Test Paths\n"
+            "## Edge Cases and Security\n"
+            "## Verdict\n"
+            "(One of: passed — ready for review / failed — needs rework, with specific items)"
         )
     elif stage == PipelineStage.REVIEW:
         if PipelineStage.PLAN in artifacts:
