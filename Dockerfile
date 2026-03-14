@@ -1,24 +1,32 @@
-# ── Stage 1: build native Python extensions ──────────────────────────────────
-FROM python:3.12-slim AS builder
+# ── Stage 1: install Python dependencies (cached until pyproject.toml changes) ─
+FROM python:3.12-slim AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+# Copy ONLY dependency metadata — source changes won't invalidate this layer
 COPY pyproject.toml README.md LICENSE ./
-COPY src/ ./src/
-RUN pip install --no-cache-dir .
+# Stub src/ so hatchling can resolve the package without real source code
+RUN mkdir -p src && touch src/__init__.py \
+    && pip install --no-cache-dir .
 
-# ── Stage 2: runtime (no gcc, no pip install) ─────────────────────────────────
+# ── Stage 2: install app code on top of cached deps ──────────────────────────
+FROM deps AS builder
+
+COPY src/ ./src/
+RUN pip install --no-cache-dir --no-deps .
+
+# ── Stage 3: runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
+# Layer 1: stable system packages (rarely changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl git ffmpeg sqlite3 procps \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @anthropic-ai/claude-code \
-    && pip install --no-cache-dir gcalcli \
-    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Layer 2: GitHub CLI (rarely changes)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -26,14 +34,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Playwright + Chromium — installed BEFORE builder output so code changes don't
-# invalidate the ~300MB browser download. This layer only rebuilds when the
-# playwright version pin or base image changes.
+# Layer 3: Node.js + Claude Code (changes when claude-code updates)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && rm -rf /var/lib/apt/lists/*
+
+# Layer 4: gcalcli (rarely changes)
+RUN pip install --no-cache-dir gcalcli
+
+# Layer 5: Playwright + Chromium — only rebuilds when base image or version changes
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN pip install --no-cache-dir "playwright>=1.40" \
     && python -m playwright install --with-deps chromium
 
-# Compiled Python deps (sqlite-vec .so, anthropic, structlog, etc.)
+# Compiled Python deps (anthropic, structlog, torch, etc.)
 # This overwrites the standalone playwright pip package above with the builder's
 # version (same range), but browsers at /opt/playwright-browsers are untouched.
 COPY --from=builder /usr/local/lib/python3.12/site-packages \

@@ -1,6 +1,7 @@
 .git/
 .venv/
 data/
+docs/
 memory/
 workspaces/
 tools_pending/
