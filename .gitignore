@@ -22,8 +22,7 @@ htmlcov/
 
 # Data (never commit user data)
 data/
-memory/logs/
-memory/facts.md
+memory/
 
 # macOS
 .DS_Store

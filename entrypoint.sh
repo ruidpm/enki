@@ -8,6 +8,9 @@ notify() {
     -o /dev/null 2>&1 || true
 }
 
+# Ensure HuggingFace cache dir is writable (volume may have stale root ownership)
+mkdir -p "$HOME/.cache/huggingface" 2>/dev/null || true
+
 # Forward signals to the python process for clean shutdown
 trap 'kill -TERM "$PID" 2>/dev/null' TERM INT
 
