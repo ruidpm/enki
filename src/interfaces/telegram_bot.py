@@ -37,6 +37,78 @@ def escape_mdv2(text: str) -> str:
     return _MDV2_ESCAPE_RE.sub(r"\\\1", text)
 
 
+def markdown_to_mdv2(text: str) -> str:
+    """Convert standard Markdown to Telegram MarkdownV2.
+
+    Handles code blocks, inline code, bold, italic, and escapes everything else.
+    """
+    result: list[str] = []
+    # Split on fenced code blocks first — content inside is literal
+    parts = re.split(r"(```[\s\S]*?```)", text)
+
+    for part in parts:
+        if part.startswith("```") and part.endswith("```"):
+            # Fenced code block — extract language hint and code
+            inner = part[3:-3]
+            # First line may be language hint
+            lines = inner.split("\n", 1)
+            if len(lines) == 2 and lines[0].strip().isalpha():
+                lang = lines[0].strip()
+                code = lines[1]
+            else:
+                lang = ""
+                code = inner
+            # Code block content is NOT escaped in MDV2 (only ` and \ need escaping)
+            result.append(f"```{lang}\n{code}```")
+            continue
+
+        # Process inline segments: split on inline code spans
+        inline_parts = re.split(r"(`[^`]+`)", part)
+        for ip in inline_parts:
+            if ip.startswith("`") and ip.endswith("`"):
+                # Inline code — pass through as-is
+                result.append(ip)
+                continue
+
+            # Convert **bold** → *bold* (MDV2 uses single *)
+            # Convert __bold__ → *bold* too
+            segment = re.sub(
+                r"\*\*(.+?)\*\*|__(.+?)__",
+                lambda m: f"*{escape_mdv2(m.group(1) or m.group(2) or '')}*",
+                ip,
+            )
+            # Convert _italic_ (single underscore, not inside a word)
+            segment = re.sub(
+                r"(?<!\w)_(.+?)_(?!\w)",
+                lambda m: f"_{escape_mdv2(m.group(1))}_",
+                segment,
+            )
+            # Now escape remaining plain text (everything not already inside * or _ spans)
+            # We need to escape chars that aren't part of our formatting
+            segment = _escape_outside_spans(segment)
+            result.append(segment)
+
+    return "".join(result)
+
+
+def _escape_outside_spans(text: str) -> str:
+    """Escape MDV2 special chars in text, preserving *bold* and _italic_ spans."""
+    result: list[str] = []
+    # Match formatting spans we want to preserve
+    pattern = re.compile(r"(\*[^*]+\*|_[^_]+_)")
+    last_end = 0
+    for m in pattern.finditer(text):
+        # Escape the plain text before this span
+        plain = text[last_end : m.start()]
+        result.append(escape_mdv2(plain))
+        # Keep the span as-is (content already escaped during bold/italic conversion)
+        result.append(m.group(0))
+        last_end = m.end()
+    # Escape remaining plain text after last span
+    result.append(escape_mdv2(text[last_end:]))
+    return "".join(result)
+
+
 class TelegramBot:
     """Telegram bot — also implements EvolveNotifier, RestartNotifier, and ConfirmationGate protocols."""
 
@@ -94,10 +166,11 @@ class TelegramBot:
 
     async def _send_md(self, chat_id: int, text: str, **kwargs: Any) -> Message:
         """Send with MarkdownV2, fall back to plain text on parse failure."""
+        mdv2 = markdown_to_mdv2(text)
         try:
             return await self._app.bot.send_message(
                 chat_id,
-                text,
+                mdv2,
                 parse_mode=ParseMode.MARKDOWN_V2,
                 **kwargs,
             )
@@ -109,8 +182,9 @@ class TelegramBot:
 
     async def _reply_md(self, message: Any, text: str) -> Message:
         """reply_text with MarkdownV2, fall back to plain text on parse failure."""
+        mdv2 = markdown_to_mdv2(text)
         try:
-            return await message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)  # type: ignore[no-any-return]
+            return await message.reply_text(mdv2, parse_mode=ParseMode.MARKDOWN_V2)  # type: ignore[no-any-return]
         except BadRequest as exc:
             if "parse" in str(exc).lower() or "can't" in str(exc).lower():
                 log.warning("mdv2_parse_fallback", error=str(exc))
@@ -240,9 +314,10 @@ class TelegramBot:
 
     async def _edit_md(self, chat_id: int, message_id: int, text: str) -> None:
         """Edit a message with MarkdownV2, fall back to plain text on parse failure."""
+        mdv2 = markdown_to_mdv2(text)
         try:
             await self._app.bot.edit_message_text(
-                text,
+                mdv2,
                 chat_id=chat_id,
                 message_id=message_id,
                 parse_mode=ParseMode.MARKDOWN_V2,
