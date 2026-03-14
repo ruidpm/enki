@@ -454,7 +454,7 @@ def telegram() -> None:
     # Remove renamed job (eod_team_report → eod_report)
     schedule_store.remove("eod_team_report")
     for job in default_jobs():
-        schedule_store.upsert(job.job_id, job.cron, job.prompt)
+        schedule_store.seed(job.job_id, job.cron, job.prompt)
 
     scheduler = Scheduler(agent=agent, notifier=notifier, store=schedule_store, timezone=config.timezone)
     if config.backup_repo:

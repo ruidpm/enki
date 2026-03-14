@@ -42,6 +42,19 @@ class ScheduleStore:
         )
         self._conn.commit()
 
+    def seed(self, job_id: str, cron: str, prompt: str) -> None:
+        """Insert a default job ONLY if it doesn't already exist.
+
+        Unlike upsert(), this preserves user modifications to existing jobs.
+        Used at startup to seed default jobs without overwriting customizations.
+        """
+        self._conn.execute(
+            """INSERT OR IGNORE INTO scheduled_jobs (job_id, cron, prompt, enabled)
+               VALUES (?, ?, ?, 1)""",
+            (job_id, cron, prompt),
+        )
+        self._conn.commit()
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM scheduled_jobs WHERE job_id = ?", (job_id,)).fetchone()
         return dict(row) if row else None
