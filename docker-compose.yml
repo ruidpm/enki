@@ -15,7 +15,7 @@ services:
       - ./src/agent.py:/app/src/agent.py:ro
       - ./main.py:/app/main.py:ro
       - ./soul.md:/app/soul.md:ro
-      - whisper_cache:/home/enki/.cache/whisper  # persists downloaded models across restarts
+      - whisper_cache:/home/enki/.cache/huggingface  # persists faster-whisper models across restarts
       - ~/.config/gcalcli:/home/enki/.config/gcalcli:ro  # Google Calendar OAuth token
     dns:
       - 8.8.8.8

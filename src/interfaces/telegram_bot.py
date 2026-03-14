@@ -360,14 +360,14 @@ class TelegramBot:
             tg_file = await ctx.bot.get_file(update.message.voice.file_id)
             await tg_file.download_to_drive(tmp_path)
 
-            # Lazy-load local Whisper model on first voice message (tiny = 39MB, ~200ms on CPU)
+            # Lazy-load local Whisper model on first voice message
             if self._whisper_model is None:
-                import whisper  # type: ignore[import-untyped]
+                from faster_whisper import WhisperModel  # type: ignore[import-not-found]
 
-                self._whisper_model = await asyncio.to_thread(whisper.load_model, "tiny")
+                self._whisper_model = await asyncio.to_thread(WhisperModel, "tiny", device="cpu", compute_type="int8")
 
-            result: dict[str, Any] = await asyncio.to_thread(self._whisper_model.transcribe, tmp_path)
-            transcript = result["text"].strip()
+            segments, _info = await asyncio.to_thread(self._whisper_model.transcribe, tmp_path)
+            transcript = " ".join(s.text.strip() for s in segments).strip()
             if not transcript:
                 await update.message.reply_text("Couldn't transcribe — empty audio?")
                 return
