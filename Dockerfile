@@ -58,7 +58,8 @@ WORKDIR /app
 
 # Non-root user — required by claude --dangerously-skip-permissions (refuses to run as root)
 RUN useradd -m -u 1000 enki \
-    && chown -R enki:enki /app
+    && mkdir -p /home/enki/.cache/huggingface \
+    && chown -R enki:enki /home/enki/.cache /app
 
 # src/ importable via PYTHONPATH — volume mounts work naturally
 ENV PYTHONPATH=/app
