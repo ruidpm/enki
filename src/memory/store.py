@@ -54,12 +54,14 @@ class MemoryStore:
         logs_dir: Path | None = None,
         facts_path: Path | None = None,
         patterns_path: Path | None = None,
+        lessons_path: Path | None = None,
     ) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._path = db_path
         self._logs_dir = logs_dir
         self._facts_path = facts_path
         self._patterns_path = patterns_path
+        self._lessons_path = lessons_path
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
 
@@ -185,6 +187,11 @@ class MemoryStore:
                 patterns_text = self._patterns_path.read_text().strip()
                 if patterns_text:
                     parts.append(f"## Behavioral patterns\n{patterns_text}")
+
+            if self._lessons_path is not None and self._lessons_path.exists():
+                lessons_text = self._lessons_path.read_text().strip()
+                if lessons_text:
+                    parts.append(f"## Lessons learned\n{lessons_text}")
 
             log_tail = self.get_today_log_tail(n=50)
             if log_tail:

@@ -152,6 +152,67 @@ Transcript:
 {transcript}
 """
 
+_EXTRACT_LESSONS_PROMPT = """\
+You are a lesson extractor for Enki, an AI assistant. \
+Given a conversation transcript, extract lessons learned — things that \
+worked, failed, or required correction during task execution.
+
+What belongs here:
+- Failure → fix cycles ("X failed because Y, the fix was Z")
+- User corrections ("don't do X, do Y instead" — the technical reason)
+- Approach changes ("tried A, switched to B because...")
+- Tool/API gotchas ("sqlite3 CLI needs .mode for CSV, not --csv flag")
+- Architecture decisions with rationale ("single-shot review works better than agentic")
+- Debugging insights ("the real cause was X, not the apparent Y")
+
+What does NOT belong:
+- User preferences (those are FACTS)
+- Behavioral habits (those are PATTERNS)
+- One-off task details
+- Things that worked without incident (no lesson to learn)
+
+If no lessons were learned this session, output nothing.
+Maximum 10 lessons. One lesson per line, no bullets or numbering.
+
+Transcript:
+{transcript}
+"""
+
+_MERGE_LESSONS_PROMPT = """\
+You are a lesson manager for Enki, an AI assistant. \
+Merge the existing lessons with newly extracted lessons.
+
+Rules:
+- Keep only actionable technical lessons (what failed, why, what works instead)
+- Remove duplicates — if a new lesson updates an old one, keep the newer version
+- Merge closely related lessons into one
+- Be conservative — when in doubt, keep the lesson
+- Maximum 50 lessons total
+- Output one lesson per line, no bullets or numbering, no headers
+
+EXISTING LESSONS:
+{existing_lessons}
+
+NEW LESSONS FROM THIS SESSION:
+{new_lessons}
+"""
+
+_CLEAN_LESSONS_PROMPT = """\
+You are a lesson curator for Enki, an AI assistant. \
+Review the existing lessons and prune/merge them.
+
+Rules:
+- Remove lessons that are clearly outdated or superseded by newer lessons
+- Merge closely related lessons into one
+- Remove duplicates
+- Be conservative — when in doubt, keep the lesson
+- Maximum 50 lessons total
+- Output one lesson per line, no bullets or numbering, no headers
+
+EXISTING LESSONS:
+{existing_lessons}
+"""
+
 _CLEAN_PROMPT = """\
 You are a memory curator for Enki, an AI assistant. \
 Review the existing user facts and prune/merge them.
@@ -182,12 +243,14 @@ class MemoryCompactor:
         facts_path: Path,
         model: str = ModelId.HAIKU,
         patterns_path: Path | None = None,
+        lessons_path: Path | None = None,
     ) -> None:
         self._store = store
         self._client = anthropic_client
         self._facts_path = facts_path
         self._model = model
         self._patterns_path = patterns_path
+        self._lessons_path = lessons_path
         self._followup_callback: Callable[..., Awaitable[None]] | None = None
 
     def set_followup_callback(
@@ -256,6 +319,9 @@ class MemoryCompactor:
 
         # Step 4: Extract follow-ups
         await self._extract_followups(transcript)
+
+        # Step 5: Extract lessons learned
+        await self._extract_and_merge_lessons(transcript)
 
         log.info("compaction_done", session_id=session_id, fact_count=len(merged_facts))
         return merged_facts
@@ -359,6 +425,106 @@ class MemoryCompactor:
 
         if lines:
             log.info("followups_extracted", count=len(lines))
+
+    async def _extract_and_merge_lessons(self, transcript: str) -> None:
+        """Extract lessons learned from a session transcript and merge with existing."""
+        if self._lessons_path is None:
+            return
+
+        response = await self._client.messages.create(
+            model=self._model,
+            max_tokens=512,
+            messages=[
+                {"role": "user", "content": _EXTRACT_LESSONS_PROMPT.format(transcript=transcript)},
+            ],
+        )
+        first = response.content[0] if response.content else None
+        raw = first.text if isinstance(first, TextBlock) else ""
+        new_lessons = [line.strip() for line in raw.splitlines() if line.strip()]
+
+        if not new_lessons:
+            log.info("no_new_lessons")
+            return
+
+        # Read existing lessons (if any) and merge
+        existing_lessons = ""
+        if self._lessons_path.exists():
+            existing_lessons = self._lessons_path.read_text().strip()
+
+        if existing_lessons:
+            merge_response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _MERGE_LESSONS_PROMPT.format(
+                            existing_lessons=existing_lessons,
+                            new_lessons="\n".join(new_lessons),
+                        ),
+                    },
+                ],
+            )
+            first_merged = merge_response.content[0] if merge_response.content else None
+            merged_raw = first_merged.text if isinstance(first_merged, TextBlock) else ""
+            merged_lessons = [line.strip() for line in merged_raw.splitlines() if line.strip()]
+        else:
+            merged_lessons = new_lessons
+
+        # Cap at 50 lessons
+        merged_lessons = merged_lessons[:50]
+
+        await asyncio.to_thread(self._write_lessons, merged_lessons)
+        log.info("lessons_done", lesson_count=len(merged_lessons))
+
+    def _write_lessons(self, lessons: list[str]) -> None:
+        """Synchronous helper to write lessons atomically — called via to_thread."""
+        if self._lessons_path is None:
+            return
+        self._lessons_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._lessons_path.with_suffix(".tmp")
+        with tmp.open("w") as f:
+            for lesson in lessons:
+                f.write(f"- {lesson}\n")
+        tmp.replace(self._lessons_path)  # atomic on POSIX
+
+    async def clean_lessons(self) -> bool:
+        """Prune stale/duplicate lessons from lessons.md.
+
+        Returns True if cleanup ran, False if skipped.
+        """
+        if self._lessons_path is None or not self._lessons_path.exists():
+            return False
+
+        existing_lessons = self._lessons_path.read_text().strip()
+        if existing_lessons.count("\n") < 20 - 1:
+            return False  # not enough lessons to bother
+
+        log.info("lessons_cleanup_starting", lesson_lines=existing_lessons.count("\n") + 1)
+        response = await self._client.messages.create(
+            model=self._model,
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _CLEAN_LESSONS_PROMPT.format(existing_lessons=existing_lessons),
+                },
+            ],
+        )
+        first_clean = response.content[0] if response.content else None
+        cleaned_raw = first_clean.text if isinstance(first_clean, TextBlock) else ""
+        cleaned = [line.strip() for line in cleaned_raw.splitlines() if line.strip()]
+
+        if not cleaned:
+            log.warning("lessons_cleanup_empty_result")
+            return False
+
+        # Cap at 50
+        cleaned = cleaned[:50]
+
+        await asyncio.to_thread(self._write_lessons, cleaned)
+        log.info("lessons_cleanup_done", before=existing_lessons.count("\n") + 1, after=len(cleaned))
+        return True
 
     async def clean_patterns(self) -> bool:
         """Prune stale/duplicate patterns from patterns.md.

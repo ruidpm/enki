@@ -155,12 +155,14 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     audit.purge_old_tier2(30)  # M-07: clean stale Tier2 records at startup
     _facts_path = Path("memory/facts.md")
     _patterns_path = Path("memory/patterns.md")
+    _lessons_path = Path("memory/lessons.md")
     _logs_dir = Path("memory/logs")
     memory = MemoryStore(
         config.memory_db_path,
         logs_dir=_logs_dir,
         facts_path=_facts_path,
         patterns_path=_patterns_path,
+        lessons_path=_lessons_path,
     )
 
     class _CliNotifier:
@@ -375,6 +377,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         anthropic_client=_anthropic_client,
         facts_path=_facts_path,
         patterns_path=_patterns_path,
+        lessons_path=_lessons_path,
         model=config.haiku_model,
     )
 
@@ -630,6 +633,12 @@ def telegram() -> None:
             await asyncio.wait_for(compactor.clean_patterns(), timeout=30.0)
         except Exception as exc:
             log.warning("patterns_cleanup_startup_failed", error=str(exc))
+
+        # Lessons cleanup — prune/merge stale lessons
+        try:
+            await asyncio.wait_for(compactor.clean_lessons(), timeout=30.0)
+        except Exception as exc:
+            log.warning("lessons_cleanup_startup_failed", error=str(exc))
 
     async def _on_shutdown(_app: object) -> None:
         import asyncio

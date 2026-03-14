@@ -437,7 +437,7 @@ class TelegramBot:
 
             # Lazy-load local Whisper model on first voice message
             if self._whisper_model is None:
-                from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+                from faster_whisper import WhisperModel
 
                 self._whisper_model = await asyncio.to_thread(WhisperModel, "tiny", device="cpu", compute_type="int8")
 
