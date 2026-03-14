@@ -308,6 +308,21 @@ class Agent:
         assert last_exc is not None  # loop ran at least once
         raise last_exc
 
+    @staticmethod
+    def _context_reinforcement(turn: int, user_summary: str, tools_used: list[str]) -> dict[str, str] | None:
+        """Return a context reminder block after 3+ autonomous turns (0-indexed >= 2)."""
+        if turn < 2:
+            return None
+        summary = user_summary[:200]
+        tool_list = ", ".join(tools_used)
+        text = (
+            f"[Context: Autonomous turn {turn + 1}. "
+            f'Original request: "{summary}". '
+            f"Tools used this turn: {tool_list}. "
+            f"Stay focused on completing the task.]"
+        )
+        return {"type": "text", "text": text}
+
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [
             {
@@ -427,6 +442,8 @@ class Agent:
             "tools": tools,
             "messages": self._conversation,
         }
+
+        _tools_used_this_loop: list[str] = []
 
         for _autonomous_turn in range(self._config.max_autonomous_turns + 1):
             # Determine if this could be the final (non-tool) turn and we should stream.
@@ -553,6 +570,21 @@ class Agent:
                                     "is_error": True,
                                 }
                             )
+
+            # Track tool names used this turn for context reinforcement
+            turn_tools: list[str] = [
+                getattr(block, "name", "") for block in response.content if getattr(block, "type", None) == "tool_use"
+            ]
+            _tools_used_this_loop.extend(turn_tools)
+
+            # Inject context reinforcement after 3+ autonomous turns
+            reinforcement = self._context_reinforcement(_autonomous_turn, plain_text, _tools_used_this_loop)
+            if reinforcement is not None:
+                tool_results.append(reinforcement)
+                log.debug(
+                    "context_reinforcement_injected",
+                    autonomous_turn=_autonomous_turn,
+                )
 
             self._conversation.append({"role": "user", "content": tool_results})
             self._cost_guard.record_autonomous_turn()
