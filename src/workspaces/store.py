@@ -31,8 +31,8 @@ class TrustLevel(IntEnum):
     TRUSTED = 4
 
 
-# Backward-compatible frozenset of all trust level values
-TrustLevel.ALL = frozenset(TrustLevel)  # type: ignore[attr-defined]
+# All valid trust level values — use this for validation instead of monkey-patching
+ALL_TRUST_LEVELS: frozenset[int] = frozenset(TrustLevel)
 
 
 _CREATE_TABLE = """

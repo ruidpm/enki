@@ -31,10 +31,10 @@ async def _run(*cmd: str, cwd: str | None = None) -> tuple[int, str, str]:
     return proc.returncode or 0, stdout.decode().strip(), stderr.decode().strip()
 
 
-def _resolve_cwd(workspace_id: str | None, workspace_store: object) -> str | tuple[None, str]:
-    """Return the cwd path string, or (None, error_message) if resolution fails."""
+def _resolve_cwd(workspace_id: str | None, workspace_store: object) -> str | None | tuple[None, str]:
+    """Return the cwd path string, None (use process CWD), or (None, error_message) if resolution fails."""
     if not workspace_id:
-        return None  # type: ignore[return-value]  # use process CWD
+        return None  # use process CWD
     if workspace_store is None:
         return None, "[ERROR] No workspace store configured."
     from src.workspaces.store import WorkspaceStore

@@ -237,7 +237,8 @@ class Agent:
                         error=str(exc),
                     )
                     await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
+        assert last_exc is not None  # loop ran at least once
+        raise last_exc
 
     async def _track_response_cost(self, response: anthropic.types.Message, model: str) -> None:
         """Track cost and audit an API response (works for both create and stream)."""
@@ -304,7 +305,8 @@ class Agent:
                         error=str(exc),
                     )
                     await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
+        assert last_exc is not None  # loop ran at least once
+        raise last_exc
 
     def _tool_definitions(self) -> list[dict[str, Any]]:
         return [

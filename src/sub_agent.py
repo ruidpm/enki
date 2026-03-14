@@ -97,7 +97,8 @@ class SubAgentRunner:
                         error=str(exc),
                     )
                     await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
+        assert last_exc is not None  # loop ran at least once
+        raise last_exc
 
     def _tool_defs(self) -> list[dict[str, Any]]:
         return [

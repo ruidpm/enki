@@ -191,7 +191,8 @@ class SpawnTeamTool:
                     max_tokens=300,
                     messages=[{"role": "user", "content": report_prompt}],
                 )
-                summary = resp.content[0].text  # type: ignore[union-attr]
+                block = resp.content[0]
+                summary = block.text if hasattr(block, "text") else str(block)
 
                 # Store result in registry
                 if self._job_registry is not None:

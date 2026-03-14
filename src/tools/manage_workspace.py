@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from src.workspaces.store import TrustLevel, WorkspaceStore
+from src.workspaces.store import ALL_TRUST_LEVELS, TrustLevel, WorkspaceStore
 
 log = structlog.get_logger()
 
@@ -279,7 +279,7 @@ class ManageWorkspaceTool:
 
         if not workspace_id:
             return "[ERROR] workspace_id is required."
-        if trust_level is None or trust_level not in TrustLevel.ALL:  # type: ignore[attr-defined]
+        if trust_level is None or trust_level not in ALL_TRUST_LEVELS:
             return (
                 f"[ERROR] Invalid trust_level '{trust_level}'. Valid: 0=read_only 1=propose 2=auto_commit 3=auto_push 4=trusted"
             )

@@ -115,7 +115,8 @@ class OutputDelivery:
                 max_tokens=300,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return resp.content[0].text  # type: ignore[union-attr]
+            block = resp.content[0]
+            return block.text if hasattr(block, "text") else str(block)
         except Exception as exc:
             log.warning("output_summary_failed", error=str(exc))
             return None
