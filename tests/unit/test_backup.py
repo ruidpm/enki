@@ -117,6 +117,43 @@ async def test_git_nothing_to_commit_is_ok(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_backup_copies_entire_memory_dir(tmp_path: Path) -> None:
+    """Backup should copy the entire memory directory including patterns.md."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "facts.md").write_text("- User fact\n")
+    (memory_dir / "patterns.md").write_text("- User pattern\n")
+    logs_dir = memory_dir / "logs"
+    logs_dir.mkdir()
+    (logs_dir / "2026-03-14.md").write_text("some log\n")
+
+    copied_files: list[str] = []
+
+    async def _fake_run_cmd(*args: str, cwd: Path | None = None) -> tuple[int, bytes, bytes]:
+        if args[0] == "gh" and "clone" in args:
+            clone_dir = Path(args[4])
+            clone_dir.mkdir(parents=True, exist_ok=True)
+        if args[0] == "git" and len(args) > 1 and args[1] == "add" and cwd:
+            for f in Path(cwd).rglob("*"):
+                if f.is_file():
+                    copied_files.append(str(f.relative_to(cwd)))
+        return (0, b"", b"")
+
+    with patch("src.backup._run_cmd", side_effect=_fake_run_cmd):
+        result = await run_backup(
+            data_dir=data_dir,
+            memory_dir=memory_dir,
+            backup_repo="ruidpm/enki-state",
+        )
+
+    # Should include all memory files in the count
+    assert "3 memory files" in result
+    assert "error" not in result.lower()
+
+
+@pytest.mark.asyncio
 async def test_sqlite_dump_failure_continues(tmp_path: Path) -> None:
     """One DB failing to dump doesn't stop others."""
     data_dir = tmp_path / "data"

@@ -81,6 +81,7 @@ If asked "is it running?" or "what's the status?" → call `job_status`. That's 
 - When the user says "remember that..." or shares a durable preference/fact, use the `remember` tool to store it immediately.
 - When the user says "forget..." or a stored fact becomes outdated, use the `forget` tool to remove it.
 - Facts persist across sessions — they are injected into every system prompt automatically.
+- You also observe behavioral patterns over time. These are injected automatically — use them to anticipate needs and provide proactive suggestions without announcing that you're doing it.
 
 ---
 

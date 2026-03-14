@@ -116,6 +116,7 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     from src.tools.claude_code import RunClaudeCodeTool
     from src.tools.email_read import EmailReadTool
     from src.tools.evolve import ProposeTool
+    from src.tools.follow_ups import FollowUpsTool
     from src.tools.github_tools import (
         CreatePRTool,
         GitCommitTool,
@@ -153,8 +154,14 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     audit = AuditDB(config.audit_db_path)
     audit.purge_old_tier2(30)  # M-07: clean stale Tier2 records at startup
     _facts_path = Path("memory/facts.md")
+    _patterns_path = Path("memory/patterns.md")
     _logs_dir = Path("memory/logs")
-    memory = MemoryStore(config.memory_db_path, logs_dir=_logs_dir, facts_path=_facts_path)
+    memory = MemoryStore(
+        config.memory_db_path,
+        logs_dir=_logs_dir,
+        facts_path=_facts_path,
+        patterns_path=_patterns_path,
+    )
 
     class _CliNotifier:
         async def ask_confirm(self, tool_name: str, params: dict) -> bool:  # type: ignore[type-arg]
@@ -235,6 +242,8 @@ def _build_agent(notifier: Any = None) -> BuildResult:
     register(RememberTool(facts_path=_facts_path))
     register(ForgetTool(facts_path=_facts_path))
     register(TasksTool(config.tasks_db_path))
+    _follow_ups_db = config.tasks_db_path.parent / "follow_ups.db"
+    register(FollowUpsTool(_follow_ups_db))
     register(WebSearchTool(config.brave_search_api_key))
     register(NotesTool(data_dir / "projects"))
     register(CalendarReadTool())
@@ -365,8 +374,17 @@ def _build_agent(notifier: Any = None) -> BuildResult:
         store=memory,
         anthropic_client=_anthropic_client,
         facts_path=_facts_path,
+        patterns_path=_patterns_path,
         model=config.haiku_model,
     )
+
+    # Wire follow-up callback: when compactor extracts a follow-up, auto-create it
+    async def _followup_callback(item: str, person: str) -> None:
+        followup_tool = FollowUpsTool(_follow_ups_db)
+        await followup_tool.execute(action="create", item=item, person=person)
+
+    compactor.set_followup_callback(_followup_callback)
+
     # Wire compactor into agent so idle-timeout resets trigger fact distillation
     agent.set_compactor(compactor)
 
@@ -606,6 +624,12 @@ def telegram() -> None:
             await asyncio.wait_for(compactor.clean_facts(), timeout=30.0)
         except Exception as exc:
             log.warning("facts_cleanup_startup_failed", error=str(exc))
+
+        # Patterns cleanup — prune/merge stale patterns
+        try:
+            await asyncio.wait_for(compactor.clean_patterns(), timeout=30.0)
+        except Exception as exc:
+            log.warning("patterns_cleanup_startup_failed", error=str(exc))
 
     async def _on_shutdown(_app: object) -> None:
         import asyncio

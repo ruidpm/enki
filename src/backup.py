@@ -20,6 +20,7 @@ DB_NAMES: list[str] = [
     "schedule.db",
     "teams.db",
     "workspaces.db",
+    "follow_ups.db",
 ]
 
 
@@ -96,18 +97,12 @@ async def _do_backup(
             out_file.write_bytes(stdout)
             dumped += 1
 
-        # 2. Copy memory files
+        # 2. Copy entire memory directory
         memory_files = 0
-        facts_path = memory_dir / "facts.md"
-        if facts_path.exists():
-            shutil.copy2(str(facts_path), str(dump_dir / "facts.md"))
-            memory_files += 1
-
-        logs_src = memory_dir / "logs"
-        if logs_src.is_dir():
-            logs_dst = dump_dir / "logs"
-            shutil.copytree(str(logs_src), str(logs_dst))
-            memory_files += sum(1 for _ in logs_dst.rglob("*") if _.is_file())
+        if memory_dir.is_dir():
+            mem_dst = dump_dir / "memory"
+            shutil.copytree(str(memory_dir), str(mem_dst))
+            memory_files = sum(1 for f in mem_dst.rglob("*") if f.is_file())
 
         # 3. Clone backup repo (shallow)
         clone_dir = work / "repo"

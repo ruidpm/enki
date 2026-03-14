@@ -75,6 +75,13 @@ def test_disabled_job_not_added_to_apscheduler(scheduler: Scheduler) -> None:
         scheduler._scheduler.get_job("disabled") or (_ for _ in ()).throw(KeyError("not found"))
 
 
+def test_morning_briefing_includes_follow_ups() -> None:
+    """Morning briefing prompt should reference follow_ups."""
+    jobs = default_jobs()
+    briefing = next(j for j in jobs if j.job_id == "morning_briefing")
+    assert "follow_ups" in briefing.prompt.lower() or "follow" in briefing.prompt.lower()
+
+
 @pytest.mark.asyncio
 async def test_run_job_error_does_not_raise(scheduler: Scheduler, mock_agent: MagicMock) -> None:
     mock_agent.run_turn = AsyncMock(side_effect=RuntimeError("boom"))
